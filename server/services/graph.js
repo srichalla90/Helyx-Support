@@ -14,9 +14,28 @@
 const TENANT_ID     = process.env.AZURE_TENANT_ID     || 'YOUR_TENANT_ID_HERE';
 const CLIENT_ID     = process.env.AZURE_CLIENT_ID     || 'YOUR_CLIENT_ID_HERE';
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET || 'YOUR_CLIENT_SECRET_HERE';
-const MAILBOX       = process.env.SUPPORT_MAILBOX      || 'support@helyxtech.com';
+const MAILBOX_ENV   = process.env.SUPPORT_MAILBOX      || 'support@helyxtech.com';
 const WEBHOOK_BASE  = process.env.WEBHOOK_BASE_URL     || '';
 const WEBHOOK_SECRET = process.env.GRAPH_WEBHOOK_SECRET || 'helyx-support-webhook-secret';
+
+// Dynamic mailbox — reads from the settings table at call-time so admins can
+// change support_email in the UI without restarting the server.
+let _db = null;
+function getDb() {
+  if (!_db) _db = require('../db');
+  return _db;
+}
+function getMailbox() {
+  try {
+    const row = getDb().prepare(`SELECT value FROM settings WHERE key = 'support_email'`).get();
+    return (row && row.value) ? row.value : MAILBOX_ENV;
+  } catch (_) {
+    return MAILBOX_ENV;
+  }
+}
+
+// Keep MAILBOX as a static export for backward-compat (subscription setup still uses env value)
+const MAILBOX = MAILBOX_ENV;
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const TOKEN_URL  = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
@@ -151,10 +170,26 @@ async function getMessage(messageId) {
     'id', 'subject', 'bodyPreview', 'body',
     'from', 'toRecipients',
     'internetMessageId', 'internetMessageHeaders',
-    'receivedDateTime',
+    'receivedDateTime', 'hasAttachments',
   ].join(',');
 
   return graphRequest(`/users/${MAILBOX}/messages/${messageId}?$select=${select}`);
+}
+
+/**
+ * Fetch file attachments for a message.
+ * Returns an array of { name, contentType, size, contentBytes (base64) }.
+ * Filters out inline/item attachments — only file attachments are returned.
+ */
+async function getMessageAttachments(messageId) {
+  const data = await graphRequest(
+    `/users/${MAILBOX}/messages/${messageId}/attachments?$select=id,name,contentType,size,contentBytes,@odata.type`
+  );
+  if (!data?.value) return [];
+  // Only process file attachments (not inline images embedded in HTML, not calendar items)
+  return data.value.filter(
+    (a) => a['@odata.type'] === '#microsoft.graph.fileAttachment' && a.contentBytes
+  );
 }
 
 /**
@@ -193,7 +228,7 @@ async function sendReply({ to, subject, textBody, htmlBody, inReplyTo, reference
   // Use reply subject line
   messagePayload.subject = subjectLine;
 
-  await graphRequest(`/users/${MAILBOX}/sendMail`, {
+  await graphRequest(`/users/${getMailbox()}/sendMail`, {
     method: 'POST',
     body:   JSON.stringify({
       message:         messagePayload,
@@ -218,7 +253,7 @@ async function sendNotification({ to, subject, htmlBody }) {
   }
   if (!to || to.length === 0) return;
 
-  await graphRequest(`/users/${MAILBOX}/sendMail`, {
+  await graphRequest(`/users/${getMailbox()}/sendMail`, {
     method: 'POST',
     body:   JSON.stringify({
       message: {
@@ -237,6 +272,7 @@ module.exports = {
   createSubscription,
   renewSubscription,
   getMessage,
+  getMessageAttachments,
   sendReply,
   sendNotification,
   MAILBOX,

@@ -24,7 +24,6 @@ function MultiSelectDropdown({ placeholder, options, selected, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     function handleClick(e) {
@@ -40,7 +39,6 @@ function MultiSelectDropdown({ placeholder, options, selected, onChange }) {
     );
   }
 
-  // Display label
   const label =
     selected.length === 0
       ? placeholder
@@ -89,7 +87,6 @@ function MultiSelectDropdown({ placeholder, options, selected, onChange }) {
           minWidth: 180, maxHeight: 280, overflowY: 'auto',
           padding: '6px 0',
         }}>
-          {/* All / clear row */}
           <label style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '6px 14px', cursor: 'pointer', fontSize: 13,
@@ -131,6 +128,81 @@ function MultiSelectDropdown({ placeholder, options, selected, onChange }) {
   );
 }
 
+// ── Bulk Action Bar ───────────────────────────────────────────────────────────
+function BulkActionBar({ selectedCount, onClear, onBulkAction, agents, groups }) {
+  const [bulkStatus,   setBulkStatus]   = useState('');
+  const [bulkPriority, setBulkPriority] = useState('');
+  const [bulkAssign,   setBulkAssign]   = useState('');
+  const [bulkGroup,    setBulkGroup]    = useState('');
+  const [applying,     setApplying]     = useState(false);
+
+  async function apply() {
+    if (!bulkStatus && !bulkPriority && !bulkAssign && !bulkGroup) return;
+    setApplying(true);
+    const updates = {};
+    if (bulkStatus)   updates.status = bulkStatus;
+    if (bulkPriority) updates.priority = bulkPriority;
+    if (bulkAssign)   updates.assigned_to = bulkAssign === '__unassign__' ? null : Number(bulkAssign);
+    if (bulkGroup)    updates.group_id    = bulkGroup    === '__unassign__' ? null : Number(bulkGroup);
+    await onBulkAction('update', updates);
+    setBulkStatus(''); setBulkPriority(''); setBulkAssign(''); setBulkGroup('');
+    setApplying(false);
+  }
+
+  const sel = { fontSize: 13, padding: '5px 10px', border: '1px solid #D1D5DB', borderRadius: 7, background: '#fff', cursor: 'pointer', color: '#374151', outline: 'none' };
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+      background: '#1E293B', color: '#fff', borderRadius: 12,
+      padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.25)', zIndex: 1000, flexWrap: 'wrap',
+      maxWidth: '90vw',
+    }}>
+      <span style={{ fontWeight: 700, fontSize: 13, paddingRight: 8, borderRight: '1px solid rgba(255,255,255,0.2)' }}>
+        {selectedCount} selected
+      </span>
+      <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} style={sel}>
+        <option value="">Set status…</option>
+        {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <select value={bulkPriority} onChange={(e) => setBulkPriority(e.target.value)} style={sel}>
+        <option value="">Set priority…</option>
+        {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select value={bulkAssign} onChange={(e) => setBulkAssign(e.target.value)} style={sel}>
+        <option value="">Assign to…</option>
+        <option value="__unassign__">— Unassigned —</option>
+        {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      <select value={bulkGroup} onChange={(e) => setBulkGroup(e.target.value)} style={sel}>
+        <option value="">Set group…</option>
+        <option value="__unassign__">— Unassigned —</option>
+        {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+      </select>
+      <button
+        onClick={apply}
+        disabled={applying || (!bulkStatus && !bulkPriority && !bulkAssign && !bulkGroup)}
+        style={{ padding: '6px 16px', fontSize: 13, fontWeight: 700, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', opacity: applying ? 0.7 : 1 }}
+      >
+        {applying ? 'Applying…' : 'Apply'}
+      </button>
+      <button
+        onClick={() => onBulkAction('delete')}
+        style={{ padding: '6px 12px', fontSize: 13, fontWeight: 700, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
+      >
+        🗑 Delete
+      </button>
+      <button
+        onClick={onClear}
+        style={{ padding: '6px 12px', fontSize: 13, background: 'none', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, cursor: 'pointer' }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const PENDING_STATUSES = new Set([
@@ -139,15 +211,16 @@ const PENDING_STATUSES = new Set([
 ]);
 
 export default function TicketList({ onSelect, filterStatus }) {
-  const [allTickets, setAllTickets] = useState([]);
-  const [groups,     setGroups]     = useState([]);
-  const [stats,      setStats]      = useState(null);
-  const [loading,    setLoading]    = useState(true);
-  const [showNew,    setShowNew]    = useState(false);
-  const [filters,    setFilters]    = useState(FILTER_DEFAULTS);
+  const [allTickets,  setAllTickets]  = useState([]);
+  const [groups,      setGroups]      = useState([]);
+  const [agents,      setAgents]      = useState([]);
+  const [stats,       setStats]       = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [showNew,     setShowNew]     = useState(false);
+  const [filters,     setFilters]     = useState(FILTER_DEFAULTS);
+  const [selected,    setSelected]    = useState(new Set()); // selected ticket IDs
   const toast = useToast();
 
-  // ── Fetch all tickets (search is the only server-side param) ────────────────
   const loadTickets = useCallback(async () => {
     setLoading(true);
     try {
@@ -155,6 +228,7 @@ export default function TicketList({ onSelect, filterStatus }) {
       if (filters.search) params.search = filters.search;
       const data = await api.getTickets(params);
       setAllTickets(data);
+      setSelected(new Set()); // clear selection on reload
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -166,27 +240,23 @@ export default function TicketList({ onSelect, filterStatus }) {
   useEffect(() => {
     api.getStats().then(setStats).catch(() => {});
     api.getGroups().then(setGroups).catch(() => {});
+    api.getUsers().then((u) => setAgents(u.filter((usr) => usr.role !== 'customer'))).catch(() => {});
   }, []);
 
-  // Reset filters when switching sidebar views
   useEffect(() => {
     setFilters(FILTER_DEFAULTS);
+    setSelected(new Set());
   }, [filterStatus]);
 
-  // ── Client-side filter + filterStatus preset ─────────────────────────────
   const tickets = allTickets.filter((t) => {
-    // Sidebar preset
     if (filterStatus === 'open')     { if (t.status !== 'Open') return false; }
     if (filterStatus === 'pending')  { if (!PENDING_STATUSES.has(t.status)) return false; }
     if (filterStatus === 'resolved') { if (t.status !== 'Resolved' && t.status !== 'Closed') return false; }
-
-    // Multi-select filters
     if (filters.statuses.length   && !filters.statuses.includes(t.status))              return false;
     if (filters.priorities.length && !filters.priorities.includes(t.priority))          return false;
     if (filters.products.length   && !filters.products.includes(t.product))             return false;
     if (filters.types.length      && !filters.types.includes(t.type))                   return false;
     if (filters.group_ids.length  && !filters.group_ids.includes(String(t.group_id)))   return false;
-
     return true;
   });
 
@@ -208,9 +278,51 @@ export default function TicketList({ onSelect, filterStatus }) {
   }
 
   const groupOptions = groups.map((g) => ({ value: String(g.id), label: g.name }));
-
-  // Only show the Status multi-select on views that aren't already preset to a status
   const showStatusFilter = filterStatus === 'tickets';
+
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  const visibleIds = tickets.map((t) => t.id);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someSelected = visibleIds.some((id) => selected.has(id));
+
+  function toggleSelect(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected((prev) => { const next = new Set(prev); visibleIds.forEach((id) => next.delete(id)); return next; });
+    } else {
+      setSelected((prev) => { const next = new Set(prev); visibleIds.forEach((id) => next.add(id)); return next; });
+    }
+  }
+
+  async function handleBulkAction(action, updates) {
+    const ids = [...selected];
+    if (!ids.length) return;
+
+    if (action === 'delete') {
+      if (!window.confirm(`Delete ${ids.length} ticket(s)? This cannot be undone.`)) return;
+      try {
+        await Promise.all(ids.map((id) => api.deleteTicket(id)));
+        toast(`Deleted ${ids.length} ticket(s)`, 'success');
+        loadTickets();
+      } catch (e) { toast(e.message, 'error'); }
+      return;
+    }
+
+    if (action === 'update') {
+      try {
+        await Promise.all(ids.map((id) => api.updateTicket(id, { ...updates, actor: 'Bulk Action' })));
+        toast(`Updated ${ids.length} ticket(s)`, 'success');
+        loadTickets();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+  }
 
   return (
     <div>
@@ -321,6 +433,15 @@ export default function TicketList({ onSelect, filterStatus }) {
           <table className="ticket-table">
             <thead>
               <tr>
+                <th style={{ width: 36, paddingRight: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                    onChange={toggleAll}
+                    style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                  />
+                </th>
                 <th style={{ width: 60 }}>#</th>
                 <th>Subject</th>
                 <th>Type</th>
@@ -328,38 +449,70 @@ export default function TicketList({ onSelect, filterStatus }) {
                 <th>Priority</th>
                 <th>Product</th>
                 <th>Group</th>
+                <th>Assigned To</th>
                 <th>Source</th>
                 <th>Created</th>
               </tr>
             </thead>
             <tbody>
-              {tickets.map((t) => (
-                <tr key={t.id} onClick={() => onSelect(t.id)}>
-                  <td style={{ color: '#9CA3AF', fontSize: 12 }}>#{t.id}</td>
-                  <td>
-                    <div className="ticket-title-cell">
-                      <div className="ticket-title">{t.title}</div>
-                      {t.requester_email && (
-                        <div className="ticket-requester">{t.requester_email}</div>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ fontSize: 12, color: '#6B7280' }}>{t.type}</td>
-                  <td><StatusBadge status={t.status} /></td>
-                  <td><PriorityBadge priority={t.priority} /></td>
-                  <td style={{ fontSize: 12, color: '#6B7280' }}>{t.product || '—'}</td>
-                  <td style={{ fontSize: 12, color: '#6B7280' }}>{t.group_name || '—'}</td>
-                  <td>
-                    <span className={`source-badge ${t.source}`}>{t.source}</span>
-                  </td>
-                  <td style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                    {fmtDate(t.created_at)}
-                  </td>
-                </tr>
-              ))}
+              {tickets.map((t) => {
+                const isSelected = selected.has(t.id);
+                return (
+                  <tr
+                    key={t.id}
+                    onClick={(e) => {
+                      // If clicking checkbox cell, don't navigate
+                      if (e.target.type === 'checkbox') return;
+                      onSelect(t.id);
+                    }}
+                    style={{ background: isSelected ? '#EFF6FF' : undefined }}
+                  >
+                    <td style={{ paddingRight: 0 }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(t.id)}
+                        style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                      />
+                    </td>
+                    <td style={{ color: '#9CA3AF', fontSize: 12 }}>#{t.id}</td>
+                    <td>
+                      <div className="ticket-title-cell">
+                        <div className="ticket-title">{t.title}</div>
+                        {t.requester_email && (
+                          <div className="ticket-requester">{t.requester_email}</div>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 12, color: '#6B7280' }}>{t.type}</td>
+                    <td><StatusBadge status={t.status} /></td>
+                    <td><PriorityBadge priority={t.priority} /></td>
+                    <td style={{ fontSize: 12, color: '#6B7280' }}>{t.product || '—'}</td>
+                    <td style={{ fontSize: 12, color: '#6B7280' }}>{t.group_name || '—'}</td>
+                    <td style={{ fontSize: 12, color: '#6B7280' }}>{t.assigned_user_name || '—'}</td>
+                    <td>
+                      <span className={`source-badge ${t.source}`}>{t.source}</span>
+                    </td>
+                    <td style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>
+                      {fmtDate(t.created_at)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Bulk action floating bar */}
+      {selected.size > 0 && (
+        <BulkActionBar
+          selectedCount={selected.size}
+          onClear={() => setSelected(new Set())}
+          onBulkAction={handleBulkAction}
+          agents={agents}
+          groups={groups}
+        />
       )}
 
       {showNew && (

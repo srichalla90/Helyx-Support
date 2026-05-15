@@ -87,6 +87,27 @@ export const api = {
       }),
   kbDownloadUrl: (fileId) => `/api/kb/files/${fileId}/download`,
 
+  // Ticket activity
+  getTicketActivity: (id) => request(`/tickets/${id}/activity`),
+
+  // Ticket attachments
+  deleteTicketAttachment: (id) => request(`/tickets/attachments/${id}`, { method: 'DELETE' }),
+  ticketAttachmentDownloadUrl: (id) => `/api/tickets/attachments/${id}/download`,
+  uploadTicketAttachments: (ticketId, formData) =>
+    fetch(`/api/tickets/${ticketId}/attachments`, { method: 'POST', body: formData, headers: getAuthHeader() })
+      .then(async (res) => { const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Upload failed'); return data; }),
+
+  // Customer ticket history
+  getTicketsByEmail: (email) => request(`/tickets?requester_email=${encodeURIComponent(email)}`),
+
+  // Email templates
+  getEmailTemplates: () => request('/email-templates'),
+  updateEmailTemplate: (key, body) => request(`/email-templates/${key}`, { method: 'PUT', body }),
+
+  // Settings
+  getSettings:    () => request('/settings'),
+  updateSettings: (body) => request('/settings', { method: 'PUT', body }),
+
   // Announcements
   getAnnouncements:       () => request('/announcements'),
   getPublicAnnouncements: () => request('/announcements/public'),
@@ -119,6 +140,48 @@ export const api = {
         if (!res.ok) throw new Error(data.error || 'Upload failed');
         return data;
       }),
+
+  // Ticket Tags
+  getTicketTags:    (ticketId) => request(`/tickets/${ticketId}/tags`),
+  addTicketTag:     (ticketId, tag) => request(`/tickets/${ticketId}/tags`, { method: 'POST', body: { tag } }),
+  removeTicketTag:  (ticketId, tag) => request(`/tickets/${ticketId}/tags/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
+
+  // Canned Responses
+  getCannedResponses:   () => request('/canned-responses'),
+  createCannedResponse: (body) => request('/canned-responses', { method: 'POST', body }),
+  updateCannedResponse: (id, body) => request(`/canned-responses/${id}`, { method: 'PUT', body }),
+  deleteCannedResponse: (id) => request(`/canned-responses/${id}`, { method: 'DELETE' }),
+
+  // CSAT
+  sendCsatSurvey:  (ticketId) => request(`/csat/send/${ticketId}`, { method: 'POST' }),
+  getCsatStats:    () => request('/csat/stats'),
+  getCsatForTicket:(ticketId) => request(`/csat/ticket/${ticketId}`),
+
+  // SLA Policies
+  getSLAPolicies:   () => request('/sla'),
+  createSLAPolicy:  (body) => request('/sla', { method: 'POST', body }),
+  updateSLAPolicy:  (id, body) => request(`/sla/${id}`, { method: 'PUT', body }),
+  deleteSLAPolicy:  (id) => request(`/sla/${id}`, { method: 'DELETE' }),
+  getTicketSLA:     (ticketId) => request(`/sla/ticket/${ticketId}`),
+
+  // Automation Rules
+  getAutomationRules:   () => request('/automation'),
+  createAutomationRule: (body) => request('/automation', { method: 'POST', body }),
+  updateAutomationRule: (id, body) => request(`/automation/${id}`, { method: 'PUT', body }),
+  deleteAutomationRule: (id) => request(`/automation/${id}`, { method: 'DELETE' }),
+  toggleAutomationRule: (id, active) => request(`/automation/${id}/toggle`, { method: 'PATCH', body: { active } }),
+
+  // Custom Fields
+  getCustomFields:        (params = {}) => request('/custom-fields' + (Object.keys(params).length ? '?' + new URLSearchParams(params) : '')),
+  createCustomField:      (body) => request('/custom-fields', { method: 'POST', body }),
+  updateCustomField:      (id, body) => request(`/custom-fields/${id}`, { method: 'PUT', body }),
+  reorderCustomField:     (id, position) => request(`/custom-fields/${id}/order`, { method: 'PATCH', body: { position } }),
+  deleteCustomField:      (id) => request(`/custom-fields/${id}`, { method: 'DELETE' }),
+  getTicketCustomFields:  (ticketId) => request(`/custom-fields/ticket/${ticketId}`),
+  saveTicketCustomFields: (ticketId, body) => request(`/custom-fields/ticket/${ticketId}`, { method: 'PUT', body }),
+
+  // Ticket Merge
+  mergeTicket: (targetId, sourceId) => request(`/tickets/${targetId}/merge`, { method: 'POST', body: { source_ticket_id: sourceId } }),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import ReportsPage        from './pages/ReportsPage';
 import KnowledgeBasePage  from './pages/KnowledgeBasePage';
 import AnnouncementsPage     from './pages/AnnouncementsPage';
 import FeatureRequestsPage  from './pages/FeatureRequestsPage';
+import SettingsPage         from './pages/SettingsPage';
 import LoginPage      from './pages/LoginPage';
 import CustomerPortal from './pages/CustomerPortal';
 import { UserContext } from './context/UserContext';
@@ -33,6 +34,7 @@ const PAGE_TITLES = {
   groups:        'Groups',
   users:         'Users',
   customers:     'Customers',
+  settings:      'Settings',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -230,7 +232,7 @@ export default function App() {
 
             <div className="content">
               {ticketId ? (
-                <TicketDetail ticketId={ticketId} onBack={backToList} />
+                <TicketDetail ticketId={ticketId} onBack={backToList} onSelectTicket={openTicket} />
               ) : isTicketView ? (
                 <TicketList onSelect={openTicket} filterStatus={page} />
               ) : page === 'groups' ? (
@@ -247,6 +249,8 @@ export default function App() {
                 <AnnouncementsPage />
               ) : page === 'features' ? (
                 <FeatureRequestsPage />
+              ) : page === 'settings' ? (
+                <SettingsPage />
               ) : null}
             </div>
           </div>

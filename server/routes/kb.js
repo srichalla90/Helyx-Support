@@ -25,6 +25,21 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 
+// Only agents and admins may write to the KB — customers are read-only
+const staffOnly = (req, res, next) => {
+  if (!['agent', 'admin'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Agent or admin access required' });
+  }
+  next();
+};
+
+// Validate numeric :id params before any handler runs
+router.param('id', (req, res, next, val) => {
+  const n = Number(val);
+  if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: 'Invalid ID' });
+  next();
+});
+
 const UPLOAD_DIR         = path.join(__dirname, '..', 'uploads', 'kb');
 const ARTICLE_UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'kb_articles');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -71,7 +86,7 @@ router.get('/tree', (_req, res) => {
 });
 
 // ── POST /api/kb/folders ──────────────────────────────────────────────────────
-router.post('/folders', (req, res) => {
+router.post('/folders', staffOnly, (req, res) => {
   const { name, parent_id } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Folder name is required' });
   try {
@@ -83,7 +98,7 @@ router.post('/folders', (req, res) => {
 });
 
 // ── PUT /api/kb/folders/:id ───────────────────────────────────────────────────
-router.put('/folders/:id', (req, res) => {
+router.put('/folders/:id', staffOnly, (req, res) => {
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Folder name is required' });
   const id = Number(req.params.id);
@@ -96,7 +111,7 @@ router.put('/folders/:id', (req, res) => {
 });
 
 // ── DELETE /api/kb/folders/:id ────────────────────────────────────────────────
-router.delete('/folders/:id', (req, res) => {
+router.delete('/folders/:id', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   try {
     const ids = allDescendantIds(id);
@@ -117,7 +132,7 @@ router.delete('/folders/:id', (req, res) => {
 });
 
 // ── POST /api/kb/folders/:id/files ───────────────────────────────────────────
-router.post('/folders/:id/files', upload.array('files', 20), (req, res) => {
+router.post('/folders/:id/files', staffOnly, upload.array('files', 20), (req, res) => {
   const folderId = Number(req.params.id);
   try {
     const inserted = [];
@@ -133,7 +148,7 @@ router.post('/folders/:id/files', upload.array('files', 20), (req, res) => {
 });
 
 // ── DELETE /api/kb/files/:id ──────────────────────────────────────────────────
-router.delete('/files/:id', (req, res) => {
+router.delete('/files/:id', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   try {
     const file = db.prepare('SELECT * FROM kb_files WHERE id = ?').get(id);
@@ -156,17 +171,40 @@ router.get('/files/:id/download', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Version helper ────────────────────────────────────────────────────────────
+// Versioning rules:
+//   new article (always draft)          → 0.1
+//   draft  → save as draft              → major.(minor+1)   e.g. 0.1 → 0.2
+//   draft  → publish                    → (major+1).0       e.g. 0.3 → 1.0
+//   published → revert to draft         → major.(minor+1)   e.g. 1.0 → 1.1
+//   published → re-publish (no change)  → unchanged
+function nextVersion(currentVersion, oldStatus, newStatus) {
+  const parts = (currentVersion || '0.0').split('.');
+  const major = parseInt(parts[0], 10) || 0;
+  const minor = parseInt(parts[1], 10) || 0;
+  if (oldStatus !== 'published' && newStatus === 'published') {
+    return `${major + 1}.0`;           // publishing → major bump
+  } else if (oldStatus === 'published' && newStatus !== 'published') {
+    return `${major}.${minor + 1}`;    // reverting to draft → minor bump
+  } else if (newStatus !== 'published') {
+    return `${major}.${minor + 1}`;    // saving draft → minor bump
+  }
+  return currentVersion || '0.1';      // re-saving published → no change
+}
+
 // ── POST /api/kb/articles ─────────────────────────────────────────────────────
-router.post('/articles', (req, res) => {
+router.post('/articles', staffOnly, (req, res) => {
   const { folder_id, title, content = '', status = 'draft' } = req.body;
   if (!folder_id) return res.status(400).json({ error: 'folder_id is required' });
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   const safeStatus = status === 'published' ? 'published' : 'draft';
+  // New articles always start at 0.1 regardless of initial status
+  const version = safeStatus === 'published' ? '1.0' : '0.1';
   try {
     const ts = now();
     const result = db.prepare(
-      `INSERT INTO kb_articles (folder_id, title, content, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(Number(folder_id), title.trim(), content, safeStatus, ts, ts);
+      `INSERT INTO kb_articles (folder_id, title, content, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(Number(folder_id), title.trim(), content, safeStatus, version, ts, ts);
     const article = db.prepare('SELECT * FROM kb_articles WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ ...article, files: [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -184,24 +222,26 @@ router.get('/articles/:id', (req, res) => {
 });
 
 // ── PUT /api/kb/articles/:id ──────────────────────────────────────────────────
-router.put('/articles/:id', (req, res) => {
+router.put('/articles/:id', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   const { title, content, status } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   const safeStatus = status === 'published' ? 'published' : 'draft';
   try {
+    const existing = db.prepare('SELECT status, version FROM kb_articles WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Article not found' });
+    const version = nextVersion(existing.version, existing.status, safeStatus);
     db.prepare(
-      `UPDATE kb_articles SET title = ?, content = ?, status = ?, updated_at = ? WHERE id = ?`
-    ).run(title.trim(), content ?? '', safeStatus, now(), id);
+      `UPDATE kb_articles SET title = ?, content = ?, status = ?, version = ?, updated_at = ? WHERE id = ?`
+    ).run(title.trim(), content ?? '', safeStatus, version, now(), id);
     const article = db.prepare('SELECT * FROM kb_articles WHERE id = ?').get(id);
-    if (!article) return res.status(404).json({ error: 'Article not found' });
     const files = db.prepare('SELECT * FROM kb_article_files WHERE article_id = ? ORDER BY created_at ASC').all(id);
     res.json({ ...article, files });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── DELETE /api/kb/articles/:id ───────────────────────────────────────────────
-router.delete('/articles/:id', (req, res) => {
+router.delete('/articles/:id', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   try {
     const article = db.prepare('SELECT * FROM kb_articles WHERE id = ?').get(id);
@@ -218,7 +258,7 @@ router.delete('/articles/:id', (req, res) => {
 });
 
 // ── POST /api/kb/articles/:id/files ──────────────────────────────────────────
-router.post('/articles/:id/files', uploadArticle.array('files', 20), (req, res) => {
+router.post('/articles/:id/files', staffOnly, uploadArticle.array('files', 20), (req, res) => {
   const articleId = Number(req.params.id);
   try {
     const inserted = [];
@@ -234,7 +274,7 @@ router.post('/articles/:id/files', uploadArticle.array('files', 20), (req, res) 
 });
 
 // ── DELETE /api/kb/article-files/:id ─────────────────────────────────────────
-router.delete('/article-files/:id', (req, res) => {
+router.delete('/article-files/:id', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   try {
     const file = db.prepare('SELECT * FROM kb_article_files WHERE id = ?').get(id);

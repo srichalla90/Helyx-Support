@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
 import { useUser } from '../context/UserContext';
@@ -233,6 +234,11 @@ function ArticleEditor({ folderId, article, onSave, onCancel }) {
           }}
         />
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+          {article?.version && (
+            <span style={{ fontSize: 11, fontWeight: 600, background: '#F1F5F9', color: '#475569', border: '1px solid #CBD5E1', borderRadius: 20, padding: '3px 10px', letterSpacing: '0.3px' }}>
+              v{article.version}
+            </span>
+          )}
           <button
             onClick={onCancel}
             disabled={!!saving}
@@ -482,6 +488,9 @@ function ArticleViewer({ article, onEdit, onDelete, onClose, onStatusChange, can
                 PUBLISHED
               </span>
             )}
+            <span style={{ fontSize: 11, fontWeight: 600, background: '#F1F5F9', color: '#475569', border: '1px solid #CBD5E1', borderRadius: 20, padding: '2px 10px', letterSpacing: '0.3px' }}>
+              v{article.version || '0.1'}
+            </span>
           </div>
           <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
             Updated {fmtDate(article.updated_at)}
@@ -520,7 +529,7 @@ function ArticleViewer({ article, onEdit, onDelete, onClose, onStatusChange, can
       {/* Content */}
       <div
         style={{ padding: '24px', fontSize: 14, lineHeight: 1.75, color: '#1F2937' }}
-        dangerouslySetInnerHTML={{ __html: article.content || '<p style="color:#9CA3AF">No content.</p>' }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content || '<p style="color:#9CA3AF">No content.</p>') }}
       />
 
       {/* Attachments */}
@@ -1281,11 +1290,16 @@ function ArticleCard({ article, onOpen, onDelete }) {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 28 }}>📄</span>
-        {isDraft && (
-          <span style={{ fontSize: 10, fontWeight: 700, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', letterSpacing: '0.3px', flexShrink: 0, marginTop: 4 }}>
-            DRAFT
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0, marginTop: 4 }}>
+          {isDraft && (
+            <span style={{ fontSize: 10, fontWeight: 700, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', letterSpacing: '0.3px' }}>
+              DRAFT
+            </span>
+          )}
+          <span style={{ fontSize: 10, fontWeight: 600, background: '#F1F5F9', color: '#475569', border: '1px solid #CBD5E1', borderRadius: 20, padding: '2px 7px', letterSpacing: '0.3px' }}>
+            v{article.version || '0.1'}
           </span>
-        )}
+        </div>
       </div>
       <div style={{ fontSize: 14, fontWeight: 600, color: isDraft ? '#92400E' : '#166534', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {article.title}

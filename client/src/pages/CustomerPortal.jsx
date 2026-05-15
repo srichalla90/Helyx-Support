@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import { api, TICKET_TYPES, PRODUCTS, PRIORITIES } from '../api';
 import { PriorityBadge } from '../components/StatusBadge';
 import { useUser } from '../context/UserContext';
@@ -276,7 +277,7 @@ function UpdatesFeed({ announcements, onSelect }) {
                     {ann.body && (
                       <p style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.6, margin: 0,
                         overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
-                        dangerouslySetInnerHTML={{ __html: ann.body.replace(/<[^>]*>/g, ' ').slice(0, 200) }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ann.body.replace(/<[^>]*>/g, ' ').slice(0, 200)) }}
                       />
                     )}
                     <div style={{ fontSize: 12, fontWeight: 600, color: cfg.text, marginTop: 10 }}>Read more →</div>
@@ -315,7 +316,7 @@ function AnnouncementDetail({ announcement, onBack }) {
         {/* Body */}
         <div
           style={{ padding: '28px', fontSize: 14, lineHeight: 1.8, color: '#1F2937' }}
-          dangerouslySetInnerHTML={{ __html: announcement.body || '<p style="color:#9CA3AF">No content.</p>' }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(announcement.body || '<p style="color:#9CA3AF">No content.</p>') }}
         />
       </div>
     </div>

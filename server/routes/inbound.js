@@ -17,9 +17,59 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const graph   = require('../services/graph');
+const notify  = require('../services/emailNotifications');
+const path    = require('path');
+const fs      = require('fs');
+
+const ATTACH_DIR = path.join(__dirname, '..', 'uploads', 'ticket_attachments');
+fs.mkdirSync(ATTACH_DIR, { recursive: true });
 
 function stripHtml(html = '') {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Fetch attachments from Graph and persist them to disk + ticket_attachments table.
+ * @param {string} messageId  - Graph message ID
+ * @param {number} ticketId   - DB ticket ID
+ * @param {number|null} commentId - DB comment ID (null if attached to ticket directly)
+ * @param {string} uploadedBy - Email of requester / sender
+ */
+async function saveEmailAttachments(messageId, ticketId, commentId, uploadedBy) {
+  try {
+    const attachments = await graph.getMessageAttachments(messageId);
+    if (!attachments.length) return;
+
+    const ts = new Date().toISOString();
+    for (const att of attachments) {
+      // Decode base64 content and write to disk
+      const buffer   = Buffer.from(att.contentBytes, 'base64');
+      const ext      = path.extname(att.name) || '';
+      const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+      const filepath = path.join(ATTACH_DIR, filename);
+      fs.writeFileSync(filepath, buffer);
+
+      db.prepare(`
+        INSERT INTO ticket_attachments
+          (ticket_id, comment_id, display_name, filename, original_name, mimetype, size, uploaded_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        ticketId,
+        commentId || null,
+        att.name,
+        filename,
+        att.name,
+        att.contentType || 'application/octet-stream',
+        att.size || buffer.length,
+        uploadedBy || null,
+        ts,
+      );
+
+      console.log(`📎  Saved email attachment: ${att.name} → ticket #${ticketId}`);
+    }
+  } catch (e) {
+    console.warn(`⚠️  Failed to save email attachments for ticket #${ticketId}: ${e.message}`);
+  }
 }
 
 // ── Validation handshake (one-time, on subscription creation) ─────────────────
@@ -90,13 +140,18 @@ router.post('/email', async (req, res) => {
         if (parentTicket) {
           // Add as a comment on the existing ticket
           const ts = new Date().toISOString();
-          db.prepare(`
-            INSERT INTO ticket_comments (ticket_id, author, body, is_public, created_at)
-            VALUES (?, ?, ?, 1, ?)
+          const cmtResult = db.prepare(`
+            INSERT INTO ticket_comments (ticket_id, author, author_role, body, is_public, created_at)
+            VALUES (?, ?, 'customer', ?, 1, ?)
           `).run(parentTicket.id, fromName, bodyText, ts);
 
           db.prepare(`UPDATE tickets SET updated_at = ? WHERE id = ?`).run(ts, parentTicket.id);
           console.log(`📧  Inbound: customer reply threaded onto ticket #${parentTicket.id}`);
+
+          // Save any attachments from the reply
+          if (msg.hasAttachments) {
+            saveEmailAttachments(messageId, parentTicket.id, cmtResult.lastInsertRowid, from);
+          }
           continue;
         }
       }
@@ -124,7 +179,12 @@ router.post('/email', async (req, res) => {
       const ticketId = result.lastInsertRowid;
       console.log(`📧  Inbound: ticket #${ticketId} created from ${from} — "${subject}"`);
 
-      // ── Notify Helyx Support group members ───────────────────────────────
+      // ── Save any attachments from the original email ──────────────────────
+      if (msg.hasAttachments) {
+        saveEmailAttachments(messageId, ticketId, null, from);
+      }
+
+      // ── Notify Helyx Support group members via email template ────────────
       // Fire-and-forget — don't let email failure block ticket creation
       (async () => {
         try {
@@ -152,34 +212,8 @@ router.post('/email', async (req, res) => {
           }
 
           const agentEmails = agents.map((a) => a.email);
-          const preview     = (bodyText || '').slice(0, 300).trim();
-          const appUrl      = process.env.WEBHOOK_BASE_URL || '';
-
-          const htmlBody =
-            `<div style="font-family:Arial,sans-serif;max-width:600px;color:#111827">` +
-            `<div style="background:#1D4ED8;padding:16px 24px;border-radius:8px 8px 0 0">` +
-            `<h2 style="color:#fff;margin:0;font-size:18px">New Support Ticket #${ticketId}</h2>` +
-            `</div>` +
-            `<div style="border:1px solid #E5E7EB;border-top:none;padding:20px 24px;border-radius:0 0 8px 8px">` +
-            `<table style="width:100%;border-collapse:collapse;margin-bottom:16px">` +
-            `<tr><td style="padding:6px 0;color:#6B7280;font-size:13px;width:110px">From</td>` +
-            `<td style="padding:6px 0;font-size:13px"><strong>${from}</strong></td></tr>` +
-            `<tr><td style="padding:6px 0;color:#6B7280;font-size:13px">Subject</td>` +
-            `<td style="padding:6px 0;font-size:13px"><strong>${subject.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</strong></td></tr>` +
-            `</table>` +
-            (preview
-              ? `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;padding:12px 16px;font-size:13px;color:#374151;margin-bottom:20px">${preview.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>`
-              : '') +
-            (appUrl && !appUrl.includes('YOUR_SERVER')
-              ? `<a href="${appUrl}" style="display:inline-block;background:#1D4ED8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">View Ticket #${ticketId}</a>`
-              : '') +
-            `</div></div>`;
-
-          await graph.sendNotification({
-            to:      agentEmails,
-            subject: `[New Ticket #${ticketId}] ${subject}`,
-            htmlBody,
-          });
+          const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
+          await notify.notifyNewTicketFromEmail(ticket, agentEmails);
 
           console.log(`📨  Notified ${agentEmails.length} agent(s) in Helyx Support: ${agentEmails.join(', ')}`);
         } catch (e) {

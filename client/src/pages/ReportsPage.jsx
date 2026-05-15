@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useToast } from '../components/Toast';
 import { api, STATUSES, PRIORITIES, TICKET_TYPES, PRODUCTS } from '../api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -247,6 +248,7 @@ function exportPDF(rows, activeCols, filterSummary) {
 // ── Main ReportsPage ──────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
+  const toast = useToast();
   const [customers,   setCustomers]   = useState([]);
   const [groups,      setGroups]      = useState([]);
   const [results,     setResults]     = useState(null); // null = not yet generated
@@ -297,7 +299,7 @@ export default function ReportsPage() {
 
       setResults(filtered);
     } catch (e) {
-      alert('Failed to load tickets: ' + e.message);
+      toast(e.message || 'Failed to load tickets', 'error');
     } finally {
       setLoading(false);
     }

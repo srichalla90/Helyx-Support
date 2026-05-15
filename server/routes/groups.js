@@ -2,7 +2,21 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 
-// List all groups with member count
+function adminOnly(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can perform this action' });
+  }
+  next();
+}
+
+// Validate numeric :id params before any handler runs
+router.param('id', (req, res, next, val) => {
+  const n = Number(val);
+  if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: 'Invalid ID' });
+  next();
+});
+
+// List all groups with member count — any authenticated user
 router.get('/', (req, res) => {
   try {
     const groups = db.prepare(`
@@ -16,8 +30,8 @@ router.get('/', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Create group
-router.post('/', (req, res) => {
+// Create group — admin only
+router.post('/', adminOnly, (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
@@ -30,8 +44,8 @@ router.post('/', (req, res) => {
   }
 });
 
-// Edit group (rename)
-router.put('/:id', (req, res) => {
+// Edit group (rename) — admin only
+router.put('/:id', adminOnly, (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
@@ -45,8 +59,8 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// Toggle active status (deactivate / reactivate)
-router.patch('/:id/status', (req, res) => {
+// Toggle active status — admin only
+router.patch('/:id/status', adminOnly, (req, res) => {
   const { active } = req.body;
   if (active === undefined) return res.status(400).json({ error: 'active is required' });
   const val = active ? 1 : 0;
@@ -56,14 +70,18 @@ router.patch('/:id/status', (req, res) => {
   res.json(group);
 });
 
-// Delete group
-router.delete('/:id', (req, res) => {
-  const result = db.prepare(`DELETE FROM "groups" WHERE id = ?`).run(Number(req.params.id));
-  if (result.changes === 0) return res.status(404).json({ error: 'Group not found' });
+// Delete group — admin only
+router.delete('/:id', adminOnly, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare(`SELECT id FROM "groups" WHERE id = ?`).get(id);
+  if (!existing) return res.status(404).json({ error: 'Group not found' });
+  db.prepare('DELETE FROM group_members WHERE group_id = ?').run(id);
+  db.prepare('UPDATE tickets SET group_id = NULL WHERE group_id = ?').run(id);
+  db.prepare(`DELETE FROM "groups" WHERE id = ?`).run(id);
   res.json({ success: true });
 });
 
-// List members of a group
+// List members of a group — any authenticated user
 router.get('/:id/members', (req, res) => {
   try {
     const members = db.prepare(`
@@ -76,8 +94,8 @@ router.get('/:id/members', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Add member to group
-router.post('/:id/members', (req, res) => {
+// Add member to group — admin only
+router.post('/:id/members', adminOnly, (req, res) => {
   const { user_id } = req.body;
   if (!user_id) return res.status(400).json({ error: 'user_id is required' });
   try {
@@ -88,8 +106,8 @@ router.post('/:id/members', (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Remove member from group
-router.delete('/:id/members/:userId', (req, res) => {
+// Remove member from group — admin only
+router.delete('/:id/members/:userId', adminOnly, (req, res) => {
   db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?').run(
     Number(req.params.id), Number(req.params.userId)
   );

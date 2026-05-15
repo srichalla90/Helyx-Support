@@ -58,35 +58,35 @@ function VotersModal({ featureId, title, onClose }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }} onClick={onClose}>
       <div style={{
-        background: '#1E293B', borderRadius: 12, padding: 24, width: 420,
+        background: '#fff', borderRadius: 12, padding: 24, width: 420,
         maxHeight: '70vh', display: 'flex', flexDirection: 'column',
-        border: '1px solid #334155',
+        border: '1px solid #E5E7EB', boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, color: '#F1F5F9', fontSize: 16 }}>
+          <h3 style={{ margin: 0, color: '#111827', fontSize: 16 }}>
             👍 Voters for "{title}"
           </h3>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#64748B', fontSize: 20, cursor: 'pointer',
+            background: 'none', border: 'none', color: '#9CA3AF', fontSize: 20, cursor: 'pointer',
           }}>×</button>
         </div>
         {loading ? (
-          <div style={{ color: '#64748B', textAlign: 'center', padding: 24 }}>Loading…</div>
+          <div style={{ color: '#6B7280', textAlign: 'center', padding: 24 }}>Loading…</div>
         ) : voters.length === 0 ? (
-          <div style={{ color: '#64748B', textAlign: 'center', padding: 24 }}>No votes yet</div>
+          <div style={{ color: '#6B7280', textAlign: 'center', padding: 24 }}>No votes yet</div>
         ) : (
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {voters.map((v, i) => (
               <div key={i} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 0', borderBottom: '1px solid #334155', fontSize: 13,
+                padding: '10px 0', borderBottom: '1px solid #F3F4F6', fontSize: 13,
               }}>
-                <span style={{ color: '#E2E8F0' }}>{v.voter_email}</span>
-                <span style={{ color: '#64748B' }}>{fmt(v.created_at)}</span>
+                <span style={{ color: '#374151' }}>{v.voter_email}</span>
+                <span style={{ color: '#9CA3AF' }}>{fmt(v.created_at)}</span>
               </div>
             ))}
           </div>
@@ -99,7 +99,7 @@ function VotersModal({ featureId, title, onClose }) {
 // ── Detail panel ──────────────────────────────────────────────────────────────
 function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
   const user = useUser();
-  const { showToast } = useToast();
+  const toast = useToast();
   const [detail, setDetail] = useState(feature);
   const [commentBody, setCommentBody] = useState('');
   const [posting, setPosting] = useState(false);
@@ -119,9 +119,9 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
       const updated = await api.updateFeatureStatus(detail.id, newStatus);
       setDetail(d => ({ ...d, ...updated }));
       onUpdate({ ...detail, ...updated });
-      showToast('Status updated', 'success');
+      toast('Status updated', 'success');
     } catch (e) {
-      showToast(e.message, 'error');
+      toast(e.message, 'error');
     } finally {
       setUpdatingStatus(false);
     }
@@ -140,9 +140,9 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
       });
       setCommentBody('');
       refresh();
-      showToast('Update posted', 'success');
+      toast('Update posted', 'success');
     } catch (e) {
-      showToast(e.message, 'error');
+      toast(e.message, 'error');
     } finally {
       setPosting(false);
     }
@@ -153,7 +153,7 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
       await api.deleteFeatureComment(detail.id, cid);
       refresh();
     } catch (e) {
-      showToast(e.message, 'error');
+      toast(e.message, 'error');
     }
   }
 
@@ -162,7 +162,7 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
       await api.deleteFeatureRequest(detail.id);
       onDelete(detail.id);
     } catch (e) {
-      showToast(e.message, 'error');
+      toast(e.message, 'error');
     }
   }
 
@@ -172,20 +172,20 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       {/* Back */}
       <button onClick={onBack} style={{
-        background: 'none', border: 'none', color: '#60A5FA', fontSize: 13,
+        background: 'none', border: 'none', color: '#2563EB', fontSize: 13,
         cursor: 'pointer', padding: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 4,
       }}>← Back to Ideas Board</button>
 
       {/* Header card */}
       <div style={{
-        background: '#1E293B', borderRadius: 12, padding: 24, marginBottom: 20,
-        border: '1px solid #334155',
+        background: '#fff', borderRadius: 12, padding: 24, marginBottom: 20,
+        border: '1px solid #E5E7EB',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: '0 0 8px 0', color: '#F1F5F9', fontSize: 20 }}>{detail.title}</h2>
-            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#64748B' }}>
-              <span>By: <span style={{ color: '#94A3B8' }}>{detail.submitter_name}</span></span>
+            <h2 style={{ margin: '0 0 8px 0', color: '#111827', fontSize: 20 }}>{detail.title}</h2>
+            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#6B7280' }}>
+              <span>By: <span style={{ color: '#374151' }}>{detail.submitter_name}</span></span>
               <span>({detail.submitter_email})</span>
               <span>·</span>
               <span>{fmt(detail.created_at)}</span>
@@ -197,8 +197,8 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
               onClick={() => setShowVoters(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
-                borderRadius: 8, background: '#0F172A', border: '1px solid #334155',
-                color: '#94A3B8', fontSize: 13, cursor: 'pointer',
+                borderRadius: 8, background: '#F9FAFB', border: '1px solid #E5E7EB',
+                color: '#374151', fontSize: 13, cursor: 'pointer',
               }}
             >
               👍 {detail.vote_count} vote{detail.vote_count !== 1 ? 's' : ''}
@@ -207,14 +207,14 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
         </div>
 
         {detail.description && (
-          <p style={{ margin: '0 0 16px 0', color: '#CBD5E1', fontSize: 14, lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 16px 0', color: '#374151', fontSize: 14, lineHeight: 1.6 }}>
             {detail.description}
           </p>
         )}
 
         {/* Status pipeline */}
-        <div style={{ borderTop: '1px solid #334155', paddingTop: 16 }}>
-          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div style={{ borderTop: '1px solid #F3F4F6', paddingTop: 16 }}>
+          <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Update Status
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -229,9 +229,9 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
                   style={{
                     padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
                     cursor: isActive ? 'default' : 'pointer',
-                    background: isActive ? cfg.bg : 'transparent',
-                    color: isActive ? cfg.text : '#64748B',
-                    border: isActive ? `1px solid ${cfg.border}` : '1px solid #334155',
+                    background: isActive ? cfg.bg : '#F9FAFB',
+                    color: isActive ? cfg.text : '#6B7280',
+                    border: isActive ? `1px solid ${cfg.border}` : '1px solid #E5E7EB',
                     transition: 'all 0.15s',
                     opacity: updatingStatus ? 0.6 : 1,
                   }}
@@ -246,16 +246,16 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
 
       {/* Official Updates */}
       <div style={{
-        background: '#1E293B', borderRadius: 12, padding: 24, marginBottom: 20,
-        border: '1px solid #334155',
+        background: '#fff', borderRadius: 12, padding: 24, marginBottom: 20,
+        border: '1px solid #E5E7EB',
       }}>
-        <h3 style={{ margin: '0 0 16px 0', color: '#F1F5F9', fontSize: 15 }}>
+        <h3 style={{ margin: '0 0 16px 0', color: '#111827', fontSize: 15 }}>
           💬 Comments & Official Updates
         </h3>
 
         {/* Post official update */}
         <form onSubmit={handlePostComment} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: '#64748B', marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 6 }}>
             Post an official update (visible to customers as Helyx response)
           </div>
           <textarea
@@ -265,9 +265,9 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
             rows={3}
             style={{
               width: '100%', boxSizing: 'border-box', padding: '10px 12px',
-              background: '#0F172A', border: '1px solid #334155', borderRadius: 8,
-              color: '#F1F5F9', fontSize: 13, resize: 'vertical', fontFamily: 'inherit',
-              lineHeight: 1.5,
+              background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8,
+              color: '#111827', fontSize: 13, resize: 'vertical', fontFamily: 'inherit',
+              lineHeight: 1.5, outline: 'none',
             }}
           />
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
@@ -276,8 +276,9 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
               disabled={posting || !commentBody.trim()}
               style={{
                 padding: '8px 18px', borderRadius: 8, border: 'none',
-                background: posting || !commentBody.trim() ? '#334155' : '#3B82F6',
-                color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: posting || !commentBody.trim() ? '#E5E7EB' : '#2563EB',
+                color: posting || !commentBody.trim() ? '#9CA3AF' : '#fff',
+                fontSize: 13, fontWeight: 600, cursor: posting || !commentBody.trim() ? 'not-allowed' : 'pointer',
               }}
             >
               {posting ? 'Posting…' : '📣 Post Official Update'}
@@ -287,7 +288,7 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
 
         {/* Comment list */}
         {comments.length === 0 ? (
-          <div style={{ color: '#64748B', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
             No comments yet
           </div>
         ) : (
@@ -295,8 +296,8 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
             {comments.map(c => (
               <div key={c.id} style={{
                 padding: 14, borderRadius: 8,
-                background: c.is_official ? '#0C1F3F' : '#0F172A',
-                border: c.is_official ? '1px solid #1D4ED8' : '1px solid #334155',
+                background: c.is_official ? '#EFF6FF' : '#F9FAFB',
+                border: c.is_official ? '1px solid #BFDBFE' : '1px solid #E5E7EB',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -306,27 +307,27 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
                         background: '#1D4ED8', color: '#fff', letterSpacing: '0.04em',
                       }}>HELYX</span>
                     )}
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#E2E8F0' }}>{c.author}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{c.author}</span>
                     {c.author_email && (
-                      <span style={{ fontSize: 11, color: '#64748B' }}>({c.author_email})</span>
+                      <span style={{ fontSize: 11, color: '#6B7280' }}>({c.author_email})</span>
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 11, color: '#64748B' }}>{fmt(c.created_at)}</span>
+                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fmt(c.created_at)}</span>
                     <button
                       onClick={() => handleDeleteComment(c.id)}
                       title="Delete comment"
                       style={{
-                        background: 'none', border: 'none', color: '#475569', cursor: 'pointer',
+                        background: 'none', border: 'none', color: '#D1D5DB', cursor: 'pointer',
                         fontSize: 14, padding: '2px 4px', borderRadius: 4,
                         transition: 'color 0.15s',
                       }}
                       onMouseEnter={e => e.currentTarget.style.color = '#EF4444'}
-                      onMouseLeave={e => e.currentTarget.style.color = '#475569'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#D1D5DB'}
                     >✕</button>
                   </div>
                 </div>
-                <p style={{ margin: 0, fontSize: 13, color: '#CBD5E1', lineHeight: 1.6 }}>{c.body}</p>
+                <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{c.body}</p>
               </div>
             ))}
           </div>
@@ -335,26 +336,26 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
 
       {/* Danger zone */}
       <div style={{
-        background: '#1E293B', borderRadius: 12, padding: 20,
-        border: '1px solid #7F1D1D',
+        background: '#fff', borderRadius: 12, padding: 20,
+        border: '1px solid #FECACA',
       }}>
-        <div style={{ fontSize: 13, color: '#FCA5A5', fontWeight: 600, marginBottom: 8 }}>Danger Zone</div>
+        <div style={{ fontSize: 13, color: '#DC2626', fontWeight: 600, marginBottom: 8 }}>Danger Zone</div>
         {confirmDelete ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 13, color: '#94A3B8' }}>Delete this feature request permanently?</span>
+            <span style={{ fontSize: 13, color: '#374151' }}>Delete this feature request permanently?</span>
             <button onClick={handleDelete} style={{
               padding: '6px 14px', borderRadius: 6, border: 'none', background: '#DC2626',
               color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
             }}>Yes, Delete</button>
             <button onClick={() => setConfirmDelete(false)} style={{
-              padding: '6px 14px', borderRadius: 6, border: '1px solid #334155', background: 'none',
-              color: '#94A3B8', fontSize: 12, cursor: 'pointer',
+              padding: '6px 14px', borderRadius: 6, border: '1px solid #E5E7EB', background: 'none',
+              color: '#6B7280', fontSize: 12, cursor: 'pointer',
             }}>Cancel</button>
           </div>
         ) : (
           <button onClick={() => setConfirmDelete(true)} style={{
-            padding: '7px 16px', borderRadius: 6, border: '1px solid #7F1D1D',
-            background: 'transparent', color: '#FCA5A5', fontSize: 13, cursor: 'pointer',
+            padding: '7px 16px', borderRadius: 6, border: '1px solid #FECACA',
+            background: 'transparent', color: '#DC2626', fontSize: 13, cursor: 'pointer',
           }}>🗑 Delete Feature Request</button>
         )}
       </div>
@@ -368,7 +369,7 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function FeatureRequestsPage() {
-  const { showToast } = useToast();
+  const toast = useToast();
   const [features, setFeatures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -378,9 +379,9 @@ export default function FeatureRequestsPage() {
   const load = useCallback(() => {
     api.getFeatureRequests()
       .then(setFeatures)
-      .catch(e => showToast(e.message, 'error'))
+      .catch(e => toast(e.message, 'error'))
       .finally(() => setLoading(false));
-  }, [showToast]);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -392,7 +393,7 @@ export default function FeatureRequestsPage() {
   function handleDelete(id) {
     setFeatures(fs => fs.filter(f => f.id !== id));
     setSelected(null);
-    showToast('Feature request deleted', 'success');
+    toast('Feature request deleted', 'success');
   }
 
   if (selected) {
@@ -426,34 +427,34 @@ export default function FeatureRequestsPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h2 style={{ margin: '0 0 4px 0', color: '#F1F5F9', fontSize: 20 }}>💡 Ideas Board</h2>
-          <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>
+          <h2 style={{ margin: '0 0 4px 0', color: '#111827', fontSize: 20 }}>💡 Ideas Board</h2>
+          <p style={{ margin: 0, color: '#6B7280', fontSize: 13 }}>
             {features.length} idea{features.length !== 1 ? 's' : ''} submitted by customers
           </p>
         </div>
         <button onClick={load} style={{
-          padding: '8px 16px', borderRadius: 8, border: '1px solid #334155',
-          background: '#1E293B', color: '#94A3B8', fontSize: 13, cursor: 'pointer',
+          padding: '8px 16px', borderRadius: 8, border: '1px solid #E5E7EB',
+          background: '#fff', color: '#374151', fontSize: 13, cursor: 'pointer',
         }}>↺ Refresh</button>
       </div>
 
       {/* Pipeline summary */}
-      <div style={{
-        display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20,
-      }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
         {STATUS_ORDER.map(s => {
           const cfg = FEATURE_STATUSES[s];
           const cnt = counts[s] || 0;
           return (
             <div key={s} style={{
               padding: '10px 16px', borderRadius: 10, minWidth: 100, textAlign: 'center',
-              background: '#1E293B', border: `1px solid ${cnt > 0 ? cfg.border : '#334155'}`,
+              background: filter === s ? cfg.bg : '#fff',
+              border: `1px solid ${cnt > 0 || filter === s ? cfg.border : '#E5E7EB'}`,
               cursor: 'pointer',
               outline: filter === s ? `2px solid ${cfg.text}` : 'none',
+              outlineOffset: 1,
             }} onClick={() => setFilter(filter === s ? 'all' : s)}>
               <div style={{ fontSize: 20, marginBottom: 2 }}>{cfg.emoji}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: cnt > 0 ? cfg.text : '#475569' }}>{cnt}</div>
-              <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>{cfg.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: cnt > 0 ? cfg.text : '#D1D5DB' }}>{cnt}</div>
+              <div style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>{cfg.label}</div>
             </div>
           );
         })}
@@ -467,71 +468,78 @@ export default function FeatureRequestsPage() {
           placeholder="Search ideas…"
           style={{
             flex: 1, maxWidth: 320, padding: '8px 12px', borderRadius: 8,
-            background: '#1E293B', border: '1px solid #334155', color: '#F1F5F9',
+            background: '#fff', border: '1px solid #E5E7EB', color: '#111827',
             fontSize: 13, outline: 'none',
           }}
         />
         {filter !== 'all' && (
           <button onClick={() => setFilter('all')} style={{
-            padding: '7px 14px', borderRadius: 8, border: '1px solid #334155',
-            background: '#1E293B', color: '#94A3B8', fontSize: 12, cursor: 'pointer',
+            padding: '7px 14px', borderRadius: 8, border: '1px solid #E5E7EB',
+            background: '#fff', color: '#6B7280', fontSize: 12, cursor: 'pointer',
           }}>✕ Clear filter</button>
         )}
-        <span style={{ fontSize: 12, color: '#64748B', marginLeft: 'auto' }}>
+        <span style={{ fontSize: 12, color: '#9CA3AF', marginLeft: 'auto' }}>
           {filtered.length} of {features.length} shown
         </span>
       </div>
 
       {/* List */}
       {loading ? (
-        <div style={{ color: '#64748B', textAlign: 'center', padding: 60 }}>Loading…</div>
+        <div style={{ color: '#9CA3AF', textAlign: 'center', padding: 60 }}>Loading…</div>
       ) : filtered.length === 0 ? (
         <div style={{
-          color: '#64748B', textAlign: 'center', padding: 60,
-          background: '#1E293B', borderRadius: 12, border: '1px solid #334155',
+          color: '#9CA3AF', textAlign: 'center', padding: 60,
+          background: '#fff', borderRadius: 12, border: '1px solid #E5E7EB',
         }}>
           {features.length === 0 ? 'No ideas submitted yet' : 'No results match your filter'}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(f => (
             <div
               key={f.id}
               onClick={() => setSelected(f)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
-                background: '#1E293B', borderRadius: 10, border: '1px solid #334155',
-                cursor: 'pointer', transition: 'border-color 0.15s',
+                display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px',
+                background: '#fff', borderRadius: 10, border: '1px solid #E5E7EB',
+                cursor: 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#3B82F6'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = '#334155'}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = '#BFDBFE';
+                e.currentTarget.style.boxShadow = '0 1px 6px rgba(59,130,246,0.08)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = '#E5E7EB';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
             >
               {/* Vote count bubble */}
               <div style={{
                 minWidth: 52, textAlign: 'center', padding: '8px 6px',
-                borderRadius: 8, background: '#0F172A', border: '1px solid #334155',
+                borderRadius: 8, background: '#F9FAFB', border: '1px solid #E5E7EB',
+                flexShrink: 0,
               }}>
                 <div style={{ fontSize: 18, lineHeight: 1 }}>👍</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#F1F5F9', marginTop: 2 }}>{f.vote_count}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginTop: 2 }}>{f.vote_count}</div>
               </div>
 
               {/* Main content */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {f.title}
                 </div>
                 {f.description && (
-                  <div style={{ fontSize: 12, color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {f.description}
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: '#475569', marginTop: 4 }}>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
                   By {f.submitter_name} ({f.submitter_email}) · {fmt(f.created_at)}
                 </div>
               </div>
 
               <StatusBadge status={f.status} />
-              <span style={{ color: '#475569', fontSize: 18 }}>›</span>
+              <span style={{ color: '#D1D5DB', fontSize: 18 }}>›</span>
             </div>
           ))}
         </div>

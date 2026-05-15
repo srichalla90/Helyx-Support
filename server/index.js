@@ -16,6 +16,13 @@ const inboundRouter      = require('./routes/inbound');
 const kbRouter            = require('./routes/kb');
 const announcementsRouter = require('./routes/announcements');
 const featuresRouter      = require('./routes/features');
+const settingsRouter      = require('./routes/settings');
+const emailTemplatesRouter = require('./routes/emailTemplates');
+const cannedResponsesRouter = require('./routes/cannedResponses');
+const csatRouter            = require('./routes/csat');
+const slaRouter             = require('./routes/sla');
+const automationRouter      = require('./routes/automation');
+const customFieldsRouter    = require('./routes/customFields');
 const subscriptionManager = require('./services/subscriptionManager');
 const requireAuth         = require('./middleware/requireAuth');
 
@@ -40,6 +47,13 @@ app.use('/api/email',         requireAuth, emailRouter);
 app.use('/api/kb',            requireAuth, kbRouter);
 app.use('/api/announcements', requireAuth, announcementsRouter);
 app.use('/api/features',      requireAuth, featuresRouter);
+app.use('/api/settings',        requireAuth, settingsRouter);
+app.use('/api/email-templates',  requireAuth, emailTemplatesRouter);
+app.use('/api/canned-responses', requireAuth, cannedResponsesRouter);
+app.use('/api/csat',             csatRouter);          // has both public + protected sub-routes
+app.use('/api/sla',              requireAuth, slaRouter);
+app.use('/api/automation',       requireAuth, automationRouter);
+app.use('/api/custom-fields',    requireAuth, customFieldsRouter);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 

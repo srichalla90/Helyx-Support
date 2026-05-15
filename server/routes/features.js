@@ -23,6 +23,21 @@ function now() { return new Date().toISOString(); }
 
 const VALID_STATUSES = ['submitted', 'under_review', 'planned', 'in_progress', 'shipped', 'declined'];
 
+// Only agents and admins may perform privileged feature actions
+const staffOnly = (req, res, next) => {
+  if (!['agent', 'admin'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Agent or admin access required' });
+  }
+  next();
+};
+
+// Validate numeric :id params before any handler runs
+router.param('id', (req, res, next, val) => {
+  const n = Number(val);
+  if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: 'Invalid ID' });
+  next();
+});
+
 // ── GET /api/features ─────────────────────────────────────────────────────────
 // ?caller=customer hides real submitter info
 router.get('/', (req, res) => {
@@ -112,7 +127,7 @@ router.post('/:id/vote', (req, res) => {
 
 // ── GET /api/features/:id/voters ─────────────────────────────────────────────
 // Agent only
-router.get('/:id/voters', (req, res) => {
+router.get('/:id/voters', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   try {
     const voters = db.prepare('SELECT voter_email, created_at FROM feature_votes WHERE feature_id = ? ORDER BY created_at ASC').all(id);
@@ -121,7 +136,7 @@ router.get('/:id/voters', (req, res) => {
 });
 
 // ── PUT /api/features/:id/status ──────────────────────────────────────────────
-router.put('/:id/status', (req, res) => {
+router.put('/:id/status', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   const { status } = req.body;
   if (!VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
@@ -138,11 +153,14 @@ router.post('/:id/comments', (req, res) => {
   const id = Number(req.params.id);
   const { author, author_email, body, is_official = false } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
+  // Only agents/admins may mark a comment as official (customers cannot self-promote)
+  const isStaff = ['agent', 'admin'].includes(req.user?.role);
+  const safeIsOfficial = isStaff ? (is_official ? 1 : 0) : 0;
   try {
     const result = db.prepare(`
       INSERT INTO feature_comments (feature_id, author, author_email, body, is_official, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, author || 'Community Member', author_email || '', body.trim(), is_official ? 1 : 0, now());
+    `).run(id, author || 'Community Member', author_email || '', body.trim(), safeIsOfficial, now());
     db.prepare('UPDATE feature_requests SET updated_at = ? WHERE id = ?').run(now(), id);
     const comment = db.prepare('SELECT * FROM feature_comments WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(comment);
@@ -150,7 +168,7 @@ router.post('/:id/comments', (req, res) => {
 });
 
 // ── DELETE /api/features/:id/comments/:cid ───────────────────────────────────
-router.delete('/:id/comments/:cid', (req, res) => {
+router.delete('/:id/comments/:cid', staffOnly, (req, res) => {
   const cid = Number(req.params.cid);
   try {
     db.prepare('DELETE FROM feature_comments WHERE id = ?').run(cid);
@@ -159,7 +177,7 @@ router.delete('/:id/comments/:cid', (req, res) => {
 });
 
 // ── DELETE /api/features/:id ──────────────────────────────────────────────────
-router.delete('/:id', (req, res) => {
+router.delete('/:id', staffOnly, (req, res) => {
   const id = Number(req.params.id);
   try {
     db.prepare('DELETE FROM feature_comments WHERE feature_id = ?').run(id);

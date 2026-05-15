@@ -20,11 +20,13 @@ const SETTINGS = [
   { id: 'groups',    icon: '👥', label: 'Groups' },
   { id: 'users',     icon: '🧑', label: 'Users' },
   { id: 'customers', icon: '🏢', label: 'Customers' },
+  { id: 'settings',  icon: '⚙️', label: 'Settings', adminOnly: true },
 ];
 
 export default function Sidebar({ current, onNav, onLogout }) {
   const user = useUser();
-  const [stats, setStats] = useState(null);
+  const [stats,    setStats]    = useState(null);
+  const [settings, setSettings] = useState({ company_name: 'Helyx', support_email: '' });
 
   useEffect(() => {
     api.getStats().then(setStats).catch(() => {});
@@ -32,11 +34,15 @@ export default function Sidebar({ current, onNav, onLogout }) {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    api.getSettings().then((s) => setSettings((prev) => ({ ...prev, ...s }))).catch(() => {});
+  }, []);
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <h2>Helyx Support</h2>
-        <span>support@helyxtech.com</span>
+        <h2>{settings.company_name} Support</h2>
+        {settings.support_email && <span>{settings.support_email}</span>}
       </div>
 
       <div className="sidebar-section">
@@ -80,8 +86,8 @@ export default function Sidebar({ current, onNav, onLogout }) {
           >
             <span>{item.icon}</span>
             <span>{item.label}</span>
-            {/* Lock icon for admin-only pages when viewed by an agent */}
-            {user?.role === 'agent' && (item.id === 'users') && (
+            {/* Lock icon for pages with restricted edit access */}
+            {user?.role === 'agent' && (item.id === 'users' || item.adminOnly) && (
               <span title="View only" style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5 }}>🔒</span>
             )}
           </button>
