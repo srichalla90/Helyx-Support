@@ -844,14 +844,13 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
               </div>
 
               {/* Rich text editor */}
-              <div style={{
-                border: `1px solid ${!isPublic ? '#FDE68A' : '#E5E7EB'}`,
-                borderRadius: 8, overflow: 'hidden',
-                background: !isPublic ? '#FFFBEB' : '#fff',
-                marginBottom: 10,
-              }}>
-                <RichToolbar editorRef={editorRef} onCannedResponse={() => setShowCanned(true)} />
-                <div style={{ position: 'relative' }}>
+              <div style={{ position: 'relative', marginBottom: 10 }}>
+                <div style={{
+                  border: `1px solid ${!isPublic ? '#FDE68A' : '#E5E7EB'}`,
+                  borderRadius: 8, overflow: 'hidden',
+                  background: !isPublic ? '#FFFBEB' : '#fff',
+                }}>
+                  <RichToolbar editorRef={editorRef} onCannedResponse={() => setShowCanned(true)} />
                   <div
                     ref={editorRef}
                     contentEditable
@@ -865,17 +864,18 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
                       lineHeight: 1.6,
                     }}
                   />
-                  {/* @mention dropdown */}
-                  {showMention && (
-                    <div
-                      ref={mentionDropdownRef}
-                      style={{
-                        position: 'absolute', top: 'calc(100% + 2px)', left: 8, zIndex: 200,
-                        background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.10)', minWidth: 280, maxWidth: 360,
-                        overflow: 'hidden',
-                      }}
-                    >
+                </div>
+                {/* @mention dropdown — outside overflow:hidden so it isn't clipped */}
+                {showMention && (
+                  <div
+                    ref={mentionDropdownRef}
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 2px)', left: 8, zIndex: 200,
+                      background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.10)', minWidth: 280, maxWidth: 360,
+                      overflow: 'hidden',
+                    }}
+                  >
                       {/* Header */}
                       <div style={{
                         padding: '7px 12px', fontSize: 11, fontWeight: 700, color: '#6B7280',
@@ -947,9 +947,8 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
                           ↑↓ navigate · Enter to select · Esc to dismiss
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* File attachment picker */}
