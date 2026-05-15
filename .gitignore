@@ -1,0 +1,32 @@
+# ── Secrets & local config ────────────────────────────────────────────────────
+server/.env
+client/.env
+.env
+.env.local
+.env.*.local
+
+# ── Database (contains all customer/ticket data — never commit) ───────────────
+server/*.db.bin
+server/*.db
+*.sqlite
+
+# ── Uploaded files ────────────────────────────────────────────────────────────
+server/uploads/
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# ── Build output ──────────────────────────────────────────────────────────────
+client/dist/
+
+# ── OS / editor noise ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+*.swp
+*.swo

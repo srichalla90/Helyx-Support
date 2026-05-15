@@ -1,0 +1,51 @@
+services:
+  helyx-support:
+    build:
+      context: .
+      # Pass Azure config into the frontend build so MSAL knows which tenant to use.
+      # These get baked into the React bundle at build time — they are NOT secrets.
+      args:
+        VITE_AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+        VITE_AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+    container_name: helyx-support
+    restart: unless-stopped
+    ports:
+      - "3001:3001"          # Change left side to "80:3001" or "443:3001" as needed
+
+    # ── Persistent data ──────────────────────────────────────────────────────
+    volumes:
+      - helyx-db:/app/server               # persists helix_support.db.bin
+      - helyx-uploads:/app/server/uploads  # persists all uploaded files
+
+    # ── Runtime environment variables ────────────────────────────────────────
+    # These are loaded from a .env file on the Linux server (not committed to git).
+    # Create a file called .env next to docker-compose.yml on the server:
+    #   AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    #   AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    #   AZURE_CLIENT_SECRET=your-client-secret
+    #   JWT_SECRET=a-long-random-string-generated-once
+    #   SUPPORT_MAILBOX=support@helyxtech.com
+    #   WEBHOOK_BASE_URL=https://your-domain.com
+    #   GRAPH_WEBHOOK_SECRET=another-random-string
+    environment:
+      NODE_ENV:             production
+      PORT:                 3001
+      JWT_SECRET:           ${JWT_SECRET}
+      AZURE_TENANT_ID:      ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID:      ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET:  ${AZURE_CLIENT_SECRET:-}
+      SUPPORT_MAILBOX:      ${SUPPORT_MAILBOX:-support@helyxtech.com}
+      WEBHOOK_BASE_URL:     ${WEBHOOK_BASE_URL:-}
+      GRAPH_WEBHOOK_SECRET: ${GRAPH_WEBHOOK_SECRET:-}
+
+    # ── Health check ──────────────────────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  helyx-db:
+  helyx-uploads:

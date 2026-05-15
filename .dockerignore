@@ -1,0 +1,28 @@
+# Dependencies — rebuilt inside the image
+node_modules
+server/node_modules
+client/node_modules
+
+# Vite dev output (we do a clean build inside Docker)
+client/dist
+
+# Local database — managed via Docker volume, never baked into the image
+server/helix_support.db.bin
+
+# Uploaded files — managed via Docker volume
+server/uploads/
+
+# Secrets — injected at runtime via environment variables
+server/.env
+.env
+
+# Dev / editor noise
+.git
+.gitignore
+*.log
+.DS_Store
+*.swp
+
+# Docs
+README.md
+*.docx

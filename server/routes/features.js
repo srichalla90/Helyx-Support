@@ -1,0 +1,172 @@
+/**
+ * features.js — Feature Requests / Ideas Board
+ *
+ * Public (customers + agents):
+ *   GET    /api/features                     — list (submitter hidden from customer queries)
+ *   GET    /api/features/:id                 — single + comments (submitter hidden for customer)
+ *   POST   /api/features                     — submit idea { title, description, submitter_email, submitter_name }
+ *   POST   /api/features/:id/vote            — toggle upvote { voter_email }
+ *   POST   /api/features/:id/comments        — add comment { author, author_email, body, is_official }
+ *
+ * Agent-only:
+ *   GET    /api/features/:id/voters          — list who voted
+ *   PUT    /api/features/:id/status          — update status { status }
+ *   DELETE /api/features/:id                 — delete
+ *   DELETE /api/features/:id/comments/:cid  — delete comment
+ */
+
+const express = require('express');
+const router  = express.Router();
+const db      = require('../db');
+
+function now() { return new Date().toISOString(); }
+
+const VALID_STATUSES = ['submitted', 'under_review', 'planned', 'in_progress', 'shipped', 'declined'];
+
+// ── GET /api/features ─────────────────────────────────────────────────────────
+// ?caller=customer hides real submitter info
+router.get('/', (req, res) => {
+  const isCustomer = req.query.caller === 'customer';
+  try {
+    const rows = db.prepare(
+      `SELECT * FROM feature_requests ORDER BY vote_count DESC, created_at DESC`
+    ).all();
+
+    const result = rows.map((r) => ({
+      ...r,
+      submitter_email: isCustomer ? null : r.submitter_email,
+      submitter_name:  isCustomer ? 'Community Member' : r.submitter_name,
+    }));
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/features/:id ─────────────────────────────────────────────────────
+router.get('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const isCustomer = req.query.caller === 'customer';
+  try {
+    const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+
+    const comments = db.prepare(
+      'SELECT * FROM feature_comments WHERE feature_id = ? ORDER BY created_at ASC'
+    ).all(id);
+
+    // Mask non-official customer comments for customer view
+    const maskedComments = comments.map((c) => ({
+      ...c,
+      author:       (isCustomer && !c.is_official) ? 'Community Member' : c.author,
+      author_email: isCustomer ? null : c.author_email,
+    }));
+
+    res.json({
+      ...row,
+      submitter_email: isCustomer ? null : row.submitter_email,
+      submitter_name:  isCustomer ? 'Community Member' : row.submitter_name,
+      comments: maskedComments,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/features ────────────────────────────────────────────────────────
+router.post('/', (req, res) => {
+  const { title, description = '', submitter_email, submitter_name = 'Community Member' } = req.body;
+  if (!title?.trim())        return res.status(400).json({ error: 'title is required' });
+  if (!submitter_email?.trim()) return res.status(400).json({ error: 'submitter_email is required' });
+  const ts = now();
+  try {
+    const result = db.prepare(`
+      INSERT INTO feature_requests (title, description, status, submitter_email, submitter_name, vote_count, created_at, updated_at)
+      VALUES (?, ?, 'submitted', ?, ?, 0, ?, ?)
+    `).run(title.trim(), description, submitter_email.trim(), submitter_name, ts, ts);
+    const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ ...row, comments: [], voted: false });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/features/:id/vote ───────────────────────────────────────────────
+// Toggle: vote if not voted, unvote if already voted
+router.post('/:id/vote', (req, res) => {
+  const id = Number(req.params.id);
+  const { voter_email } = req.body;
+  if (!voter_email) return res.status(400).json({ error: 'voter_email is required' });
+  try {
+    const existing = db.prepare(
+      'SELECT id FROM feature_votes WHERE feature_id = ? AND voter_email = ?'
+    ).get(id, voter_email);
+
+    if (existing) {
+      // Remove vote
+      db.prepare('DELETE FROM feature_votes WHERE feature_id = ? AND voter_email = ?').run(id, voter_email);
+      db.prepare('UPDATE feature_requests SET vote_count = MAX(0, vote_count - 1), updated_at = ? WHERE id = ?').run(now(), id);
+      return res.json({ voted: false, vote_count: db.prepare('SELECT vote_count FROM feature_requests WHERE id = ?').get(id)?.vote_count ?? 0 });
+    } else {
+      // Add vote
+      db.prepare('INSERT INTO feature_votes (feature_id, voter_email, created_at) VALUES (?, ?, ?)').run(id, voter_email, now());
+      db.prepare('UPDATE feature_requests SET vote_count = vote_count + 1, updated_at = ? WHERE id = ?').run(now(), id);
+      return res.json({ voted: true, vote_count: db.prepare('SELECT vote_count FROM feature_requests WHERE id = ?').get(id)?.vote_count ?? 0 });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/features/:id/voters ─────────────────────────────────────────────
+// Agent only
+router.get('/:id/voters', (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const voters = db.prepare('SELECT voter_email, created_at FROM feature_votes WHERE feature_id = ? ORDER BY created_at ASC').all(id);
+    res.json(voters);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/features/:id/status ──────────────────────────────────────────────
+router.put('/:id/status', (req, res) => {
+  const id = Number(req.params.id);
+  const { status } = req.body;
+  if (!VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  try {
+    db.prepare('UPDATE feature_requests SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), id);
+    const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/features/:id/comments ──────────────────────────────────────────
+router.post('/:id/comments', (req, res) => {
+  const id = Number(req.params.id);
+  const { author, author_email, body, is_official = false } = req.body;
+  if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
+  try {
+    const result = db.prepare(`
+      INSERT INTO feature_comments (feature_id, author, author_email, body, is_official, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, author || 'Community Member', author_email || '', body.trim(), is_official ? 1 : 0, now());
+    db.prepare('UPDATE feature_requests SET updated_at = ? WHERE id = ?').run(now(), id);
+    const comment = db.prepare('SELECT * FROM feature_comments WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(comment);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/features/:id/comments/:cid ───────────────────────────────────
+router.delete('/:id/comments/:cid', (req, res) => {
+  const cid = Number(req.params.cid);
+  try {
+    db.prepare('DELETE FROM feature_comments WHERE id = ?').run(cid);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/features/:id ──────────────────────────────────────────────────
+router.delete('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    db.prepare('DELETE FROM feature_comments WHERE feature_id = ?').run(id);
+    db.prepare('DELETE FROM feature_votes    WHERE feature_id = ?').run(id);
+    db.prepare('DELETE FROM feature_requests WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+module.exports = router;
