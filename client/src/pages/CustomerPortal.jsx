@@ -102,15 +102,15 @@ function PortalHeader({ view, onNav, onLogout, userName, newCount = 0, isStaffUs
             key={n.id}
             onClick={() => onNav(n.id)}
             style={{
-              padding: '6px 13px', fontSize: 13, fontWeight: 500,
+              padding: '6px 13px', fontSize: 14.5, fontWeight: view === n.id ? 700 : 500,
               borderRadius: 6, border: 'none', cursor: 'pointer',
               background: view === n.id ? '#0F172A' : 'transparent',
-              color:      view === n.id ? '#93C5FD' : '#94A3B8',
+              color:      view === n.id ? '#ffffff' : '#ffffff',
               transition: 'all 0.15s', whiteSpace: 'nowrap',
               display: 'flex', alignItems: 'center', gap: 5,
             }}
-            onMouseEnter={(e) => { if (view !== n.id) { e.currentTarget.style.background = '#293548'; e.currentTarget.style.color = '#E2E8F0'; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = view === n.id ? '#0F172A' : 'transparent'; e.currentTarget.style.color = view === n.id ? '#93C5FD' : '#94A3B8'; }}
+            onMouseEnter={(e) => { if (view !== n.id) { e.currentTarget.style.background = '#293548'; e.currentTarget.style.color = '#ffffff'; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = view === n.id ? '#0F172A' : 'transparent'; e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.fontWeight = view === n.id ? '700' : '500'; }}
           >
             {n.label}
             {n.badge > 0 && (
