@@ -18,6 +18,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const handleError   = require('../middleware/handleError');
 
 function now() { return new Date().toISOString(); }
 
@@ -39,9 +40,9 @@ router.param('id', (req, res, next, val) => {
 });
 
 // ── GET /api/features ─────────────────────────────────────────────────────────
-// ?caller=customer hides real submitter info
+// Submitter PII is hidden from customers — derived from JWT role, not query param
 router.get('/', (req, res) => {
-  const isCustomer = req.query.caller === 'customer';
+  const isStaff = ['agent', 'admin'].includes(req.user?.role);
   try {
     const rows = db.prepare(
       `SELECT * FROM feature_requests ORDER BY vote_count DESC, created_at DESC`
@@ -49,17 +50,17 @@ router.get('/', (req, res) => {
 
     const result = rows.map((r) => ({
       ...r,
-      submitter_email: isCustomer ? null : r.submitter_email,
-      submitter_name:  isCustomer ? 'Community Member' : r.submitter_name,
+      submitter_email: isStaff ? r.submitter_email : null,
+      submitter_name:  isStaff ? r.submitter_name  : 'Community Member',
     }));
     res.json(result);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/features/:id ─────────────────────────────────────────────────────
 router.get('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const isCustomer = req.query.caller === 'customer';
+  const isStaff = ['agent', 'admin'].includes(req.user?.role);
   try {
     const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
@@ -68,44 +69,46 @@ router.get('/:id', (req, res) => {
       'SELECT * FROM feature_comments WHERE feature_id = ? ORDER BY created_at ASC'
     ).all(id);
 
-    // Mask non-official customer comments for customer view
+    // Mask non-official author PII for customer view — derived from JWT role
     const maskedComments = comments.map((c) => ({
       ...c,
-      author:       (isCustomer && !c.is_official) ? 'Community Member' : c.author,
-      author_email: isCustomer ? null : c.author_email,
+      author:       (!isStaff && !c.is_official) ? 'Community Member' : c.author,
+      author_email: isStaff ? c.author_email : null,
     }));
 
     res.json({
       ...row,
-      submitter_email: isCustomer ? null : row.submitter_email,
-      submitter_name:  isCustomer ? 'Community Member' : row.submitter_name,
+      submitter_email: isStaff ? row.submitter_email : null,
+      submitter_name:  isStaff ? row.submitter_name  : 'Community Member',
       comments: maskedComments,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/features ────────────────────────────────────────────────────────
+// submitter identity is always taken from the verified JWT — never from the request body
 router.post('/', (req, res) => {
-  const { title, description = '', submitter_email, submitter_name = 'Community Member' } = req.body;
-  if (!title?.trim())        return res.status(400).json({ error: 'title is required' });
-  if (!submitter_email?.trim()) return res.status(400).json({ error: 'submitter_email is required' });
+  const { title, description = '' } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  const submitter_email = req.user.email;
+  const submitter_name  = req.user.name || req.user.email;
   const ts = now();
   try {
     const result = db.prepare(`
       INSERT INTO feature_requests (title, description, status, submitter_email, submitter_name, vote_count, created_at, updated_at)
       VALUES (?, ?, 'submitted', ?, ?, 0, ?, ?)
-    `).run(title.trim(), description, submitter_email.trim(), submitter_name, ts, ts);
+    `).run(title.trim(), description, submitter_email, submitter_name, ts, ts);
     const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ ...row, comments: [], voted: false });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/features/:id/vote ───────────────────────────────────────────────
 // Toggle: vote if not voted, unvote if already voted
+// voter_email is always taken from the verified JWT — never from the request body
 router.post('/:id/vote', (req, res) => {
   const id = Number(req.params.id);
-  const { voter_email } = req.body;
-  if (!voter_email) return res.status(400).json({ error: 'voter_email is required' });
+  const voter_email = req.user.email; // always from JWT
   try {
     const existing = db.prepare(
       'SELECT id FROM feature_votes WHERE feature_id = ? AND voter_email = ?'
@@ -122,7 +125,7 @@ router.post('/:id/vote', (req, res) => {
       db.prepare('UPDATE feature_requests SET vote_count = vote_count + 1, updated_at = ? WHERE id = ?').run(now(), id);
       return res.json({ voted: true, vote_count: db.prepare('SELECT vote_count FROM feature_requests WHERE id = ?').get(id)?.vote_count ?? 0 });
     }
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/features/:id/voters ─────────────────────────────────────────────
@@ -132,7 +135,7 @@ router.get('/:id/voters', staffOnly, (req, res) => {
   try {
     const voters = db.prepare('SELECT voter_email, created_at FROM feature_votes WHERE feature_id = ? ORDER BY created_at ASC').all(id);
     res.json(voters);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/features/:id/status ──────────────────────────────────────────────
@@ -145,26 +148,30 @@ router.put('/:id/status', staffOnly, (req, res) => {
     const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/features/:id/comments ──────────────────────────────────────────
+// author identity is always taken from the verified JWT — never from the request body
 router.post('/:id/comments', (req, res) => {
   const id = Number(req.params.id);
-  const { author, author_email, body, is_official = false } = req.body;
+  const { body, is_official = false } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
-  // Only agents/admins may mark a comment as official (customers cannot self-promote)
+  // Identity from JWT
+  const author       = req.user.name  || req.user.email;
+  const author_email = req.user.email;
+  // Only agents/admins may mark a comment as official
   const isStaff = ['agent', 'admin'].includes(req.user?.role);
   const safeIsOfficial = isStaff ? (is_official ? 1 : 0) : 0;
   try {
     const result = db.prepare(`
       INSERT INTO feature_comments (feature_id, author, author_email, body, is_official, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, author || 'Community Member', author_email || '', body.trim(), safeIsOfficial, now());
+    `).run(id, author, author_email, body.trim(), safeIsOfficial, now());
     db.prepare('UPDATE feature_requests SET updated_at = ? WHERE id = ?').run(now(), id);
     const comment = db.prepare('SELECT * FROM feature_comments WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(comment);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/features/:id/comments/:cid ───────────────────────────────────
@@ -173,7 +180,7 @@ router.delete('/:id/comments/:cid', staffOnly, (req, res) => {
   try {
     db.prepare('DELETE FROM feature_comments WHERE id = ?').run(cid);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/features/:id ──────────────────────────────────────────────────
@@ -184,7 +191,7 @@ router.delete('/:id', staffOnly, (req, res) => {
     db.prepare('DELETE FROM feature_votes    WHERE feature_id = ?').run(id);
     db.prepare('DELETE FROM feature_requests WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

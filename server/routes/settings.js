@@ -11,6 +11,8 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const adminOnly    = require('../middleware/adminOnly');
+const handleError   = require('../middleware/handleError');
 
 // Keys that are allowed to be read/written via the API
 const ALLOWED_KEYS = new Set([
@@ -21,11 +23,6 @@ const ALLOWED_KEYS = new Set([
   'announce_notify_agents',
 ]);
 
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Only admins can perform this action' });
-  next();
-}
-
 // ── GET /api/settings ─────────────────────────────────────────────────────────
 router.get('/', (_req, res) => {
   try {
@@ -35,7 +32,7 @@ router.get('/', (_req, res) => {
       if (ALLOWED_KEYS.has(r.key)) map[r.key] = r.value;
     }
     res.json(map);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/settings ─────────────────────────────────────────────────────────
@@ -57,7 +54,7 @@ router.put('/', adminOnly, (req, res) => {
       if (ALLOWED_KEYS.has(r.key)) map[r.key] = r.value;
     }
     res.json(map);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

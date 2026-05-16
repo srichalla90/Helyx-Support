@@ -13,6 +13,7 @@ const router   = express.Router();
 const db       = require('../db');
 const graph    = require('../services/graph');
 const requireAuth = require('../middleware/requireAuth');
+const handleError   = require('../middleware/handleError');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

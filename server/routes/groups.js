@@ -1,13 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
-
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Only admins can perform this action' });
-  }
-  next();
-}
+const adminOnly    = require('../middleware/adminOnly');
+const handleError   = require('../middleware/handleError');
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
@@ -27,7 +22,7 @@ router.get('/', (req, res) => {
       ORDER BY g.name
     `).all();
     res.json(groups);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // Create group — admin only
@@ -40,7 +35,7 @@ router.post('/', adminOnly, (req, res) => {
     res.status(201).json(group);
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Group already exists' });
-    res.status(500).json({ error: e.message });
+    return handleError(res, e);
   }
 });
 
@@ -55,7 +50,7 @@ router.put('/:id', adminOnly, (req, res) => {
     res.json(group);
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Group name already exists' });
-    res.status(500).json({ error: e.message });
+    return handleError(res, e);
   }
 });
 
@@ -91,7 +86,7 @@ router.get('/:id/members', (req, res) => {
       ORDER BY u.name
     `).all(Number(req.params.id));
     res.json(members);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // Add member to group — admin only
@@ -103,7 +98,7 @@ router.post('/:id/members', adminOnly, (req, res) => {
       Number(req.params.id), Number(user_id)
     );
     res.status(201).json({ success: true });
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // Remove member from group — admin only

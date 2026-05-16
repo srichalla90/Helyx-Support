@@ -22,6 +22,7 @@ const router     = express.Router();
 const jwt        = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const db         = require('../db');
+const handleError   = require('../middleware/handleError');
 
 const TENANT_ID = process.env.AZURE_TENANT_ID;
 const CLIENT_ID = process.env.AZURE_CLIENT_ID;

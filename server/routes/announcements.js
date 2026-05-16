@@ -12,15 +12,12 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const graph   = require('../services/graph');
+const adminOnly    = require('../middleware/adminOnly');
+const handleError   = require('../middleware/handleError');
 
 function now() { return new Date().toISOString(); }
 
 const VALID_TYPES = ['new_feature', 'coming_soon', 'maintenance', 'general', 'bug_fix'];
-
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Only admins can perform this action' });
-  next();
-}
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
@@ -127,7 +124,7 @@ router.get('/', (_req, res) => {
   try {
     const rows = db.prepare('SELECT * FROM announcements ORDER BY pinned DESC, updated_at DESC').all();
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/announcements/public ─────────────────────────────────────────────
@@ -137,7 +134,7 @@ router.get('/public', (_req, res) => {
       `SELECT * FROM announcements WHERE status = 'published' ORDER BY pinned DESC, published_at DESC`
     ).all();
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/announcements ───────────────────────────────────────────────────
@@ -159,7 +156,7 @@ router.post('/', adminOnly, (req, res) => {
     if (safeStatus === 'published' && send_email) sendAnnouncementBlast(row);
 
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/announcements/:id ────────────────────────────────────────────────
@@ -193,7 +190,7 @@ router.put('/:id', adminOnly, (req, res) => {
     if (nowPublished && send_email) sendAnnouncementBlast(row);
 
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/announcements/:id ─────────────────────────────────────────────
@@ -204,7 +201,7 @@ router.delete('/:id', adminOnly, (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

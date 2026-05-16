@@ -7,6 +7,7 @@ const fs       = require('fs');
 const multer   = require('multer');
 const tagsRouter = require('./tags');
 const { applyAutomationRules } = require('./automation');
+const handleError   = require('../middleware/handleError');
 
 // Mount tags sub-router
 router.use('/:ticketId/tags', tagsRouter);
@@ -58,28 +59,44 @@ const TICKET_SELECT = `
 
 // ── GET /api/tickets ──────────────────────────────────────────────────────────
 router.get('/', (req, res) => {
-  const { status, priority, product, group_id, type, customer_id, requester_email, search, assigned_to } = req.query;
+  const { status, priority, product, group_id, type, customer_id, search, assigned_to } = req.query;
+  let requester_email = req.query.requester_email;
   let sql = TICKET_SELECT + ' WHERE 1=1';
   const params = [];
 
-  if (status)           { sql += ` AND t.status = ?`;                              params.push(status); }
-  if (priority)         { sql += ` AND t.priority = ?`;                            params.push(priority); }
-  if (product)          { sql += ` AND t.product = ?`;                             params.push(product); }
-  if (group_id)         { sql += ` AND t.group_id = ?`;                            params.push(Number(group_id)); }
-  if (type)             { sql += ` AND t.type = ?`;                                params.push(type); }
-  if (customer_id)      { sql += ` AND t.customer_id = ?`;                         params.push(Number(customer_id)); }
-  if (assigned_to)      { sql += ` AND t.assigned_to = ?`;                         params.push(Number(assigned_to)); }
-  if (requester_email)  { sql += ` AND LOWER(t.requester_email) = LOWER(?)`;       params.push(requester_email); }
-  if (search) {
-    sql += ` AND (t.title LIKE ? OR t.description LIKE ? OR t.requester_email LIKE ?)`;
-    const like = `%${search}%`;
-    params.push(like, like, like);
+  // Customers may only see their own tickets — ignore any requester_email from the query param
+  // and force-filter by the email in their verified JWT instead.
+  if (req.user?.role === 'customer') {
+    sql += ` AND LOWER(t.requester_email) = LOWER(?)`;
+    params.push(req.user.email);
+  } else {
+    if (status)           { sql += ` AND t.status = ?`;                              params.push(status); }
+    if (priority)         { sql += ` AND t.priority = ?`;                            params.push(priority); }
+    if (product)          { sql += ` AND t.product = ?`;                             params.push(product); }
+    if (group_id)         { sql += ` AND t.group_id = ?`;                            params.push(Number(group_id)); }
+    if (type)             { sql += ` AND t.type = ?`;                                params.push(type); }
+    if (customer_id)      { sql += ` AND t.customer_id = ?`;                         params.push(Number(customer_id)); }
+    if (assigned_to)      { sql += ` AND t.assigned_to = ?`;                         params.push(Number(assigned_to)); }
+    if (requester_email)  { sql += ` AND LOWER(t.requester_email) = LOWER(?)`;       params.push(requester_email); }
+    if (search) {
+      sql += ` AND (t.title LIKE ? OR t.description LIKE ? OR t.requester_email LIKE ?)`;
+      const like = `%${search}%`;
+      params.push(like, like, like);
+    }
   }
+
+  // Customers get search within their own tickets only
+  if (req.user?.role === 'customer' && search) {
+    sql += ` AND (t.title LIKE ? OR t.description LIKE ?)`;
+    const like = `%${search}%`;
+    params.push(like, like);
+  }
+
   sql += ' ORDER BY t.created_at DESC';
 
   try {
     res.json(db.prepare(sql).all(...params));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/tickets/attachments/:id/download ────────────────────────────────
@@ -91,19 +108,25 @@ router.get('/attachments/:id/download', (req, res) => {
     const filePath = path.join(ATTACH_DIR, att.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on disk' });
     res.download(filePath, att.original_name || att.display_name);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/tickets/attachments/:id ──────────────────────────────────────
+// Only the uploader or staff (agent/admin) may delete an attachment
 router.delete('/attachments/:id', (req, res) => {
   const id = Number(req.params.id);
   try {
     const att = db.prepare('SELECT * FROM ticket_attachments WHERE id = ?').get(id);
     if (!att) return res.status(404).json({ error: 'Attachment not found' });
+    const isStaff = req.user?.role === 'admin' || req.user?.role === 'agent';
+    const isUploader = att.uploaded_by && att.uploaded_by === req.user?.email;
+    if (!isStaff && !isUploader) {
+      return res.status(403).json({ error: 'Not authorised to delete this attachment' });
+    }
     try { fs.unlinkSync(path.join(ATTACH_DIR, att.filename)); } catch (_) {}
     db.prepare('DELETE FROM ticket_attachments WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/tickets/:id ──────────────────────────────────────────────────────
@@ -132,7 +155,7 @@ router.get('/:id/activity', (req, res) => {
       'SELECT * FROM ticket_activity WHERE ticket_id = ? ORDER BY created_at ASC'
     ).all(id);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/tickets ─────────────────────────────────────────────────────────
@@ -185,7 +208,7 @@ router.post('/', (req, res) => {
     try { applyAutomationRules(ticket, 'ticket_created'); } catch (_) {}
 
     res.status(201).json({ ...ticket, comments: [], attachments: [] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/tickets/:id ──────────────────────────────────────────────────────
@@ -269,7 +292,7 @@ router.put('/:id', (req, res) => {
     try { applyAutomationRules(updated, 'ticket_updated'); } catch (_) {}
 
     res.json(updated);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/tickets/:id ── admin only ─────────────────────────────────────
@@ -298,7 +321,7 @@ router.delete('/:id', (req, res) => {
     db.prepare('DELETE FROM tickets           WHERE id = ?').run(id);
 
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/tickets/:id/comments ────────────────────────────────────────────
@@ -383,7 +406,7 @@ router.post('/:id/attachments', uploadAttach.array('files', 10), (req, res) => {
     }
     logActivity(ticketId, uploadedBy, 'attachment_added', null, null, `${inserted.length} file(s)`);
     res.status(201).json(inserted);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 
@@ -393,6 +416,11 @@ router.post('/:id/attachments', uploadAttach.array('files', 10), (req, res) => {
 // All comments, attachments, tags, and custom field values from source are
 // copied into target. Source ticket is then closed with a merge note.
 router.post('/:id/merge', (req, res) => {
+  // Only agents and admins may merge tickets
+  if (!['agent', 'admin'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Only staff may merge tickets' });
+  }
+
   const targetId = Number(req.params.id);
   const { source_ticket_id } = req.body;
 
@@ -455,7 +483,7 @@ router.post('/:id/merge', (req, res) => {
 
     const updatedTarget = db.prepare(`${TICKET_SELECT} WHERE t.id = ?`).get(targetId);
     res.json(updatedTarget);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

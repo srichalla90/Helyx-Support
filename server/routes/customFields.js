@@ -16,15 +16,10 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const adminOnly    = require('../middleware/adminOnly');
+const handleError   = require('../middleware/handleError');
 
 const FIELD_TYPES = ['text', 'number', 'dropdown', 'date', 'checkbox', 'url', 'textarea'];
-
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Only admins can perform this action' });
-  }
-  next();
-}
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
@@ -46,7 +41,7 @@ router.get('/', (req, res) => {
       required: r.required === 1,
       active:   r.active   === 1,
     })));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/custom-fields — create definition ───────────────────────────────
@@ -93,7 +88,7 @@ router.post('/', adminOnly, (req, res) => {
     });
   } catch (e) {
     if (e.message?.includes('UNIQUE')) return res.status(409).json({ error: 'A field with this name already exists' });
-    res.status(500).json({ error: e.message });
+    return handleError(res, e);
   }
 });
 
@@ -129,7 +124,7 @@ router.put('/:id', adminOnly, (req, res) => {
       required: row.required === 1,
       active:   row.active   === 1,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/custom-fields/:id — deactivate (soft delete) ─────────────────
@@ -140,7 +135,7 @@ router.delete('/:id', adminOnly, (req, res) => {
   try {
     db.prepare('UPDATE custom_field_definitions SET active = 0 WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/custom-fields/ticket/:ticketId — get values for a ticket ─────────
@@ -170,7 +165,7 @@ router.get('/ticket/:ticketId', (req, res) => {
         value:    valueMap[d.id] ?? null,
       })),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/custom-fields/ticket/:ticketId — batch save values ───────────────
@@ -219,7 +214,7 @@ router.put('/ticket/:ticketId', (req, res) => {
         value:    valueMap[d.id] ?? null,
       })),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PATCH /api/custom-fields/:id/order — reorder field ───────────────────────
@@ -239,7 +234,7 @@ router.patch('/:id/order', adminOnly, (req, res) => {
       required: row.required === 1,
       active:   row.active   === 1,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

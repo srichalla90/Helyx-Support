@@ -66,6 +66,40 @@ function getVideoEmbedHtml(url) {
     return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://www.loom.com/embed/${loom[1]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>`;
   }
 
+  // Zoom recordings: zoom.us/rec/share/ID or zoom.us/rec/play/ID
+  const zoom = url.match(/zoom\.us\/rec\/(?:share|play)\/([^?&\s]+)/);
+  if (zoom) {
+    return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://zoom.us/rec/play/${zoom[1]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>`;
+  }
+
+  // Wistia: fast.wistia.com/medias/ID or wistia.com/medias/ID
+  const wistia = url.match(/wistia\.(?:com|net)\/medias\/([a-zA-Z0-9]+)/);
+  if (wistia) {
+    return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://fast.wistia.net/embed/iframe/${wistia[1]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay;fullscreen" allowfullscreen></iframe></div>`;
+  }
+
+  // Vidyard: share.vidyard.com/watch/ID or vidyard.com/watch/ID
+  const vidyard = url.match(/vidyard\.com\/watch\/([a-zA-Z0-9_-]+)/);
+  if (vidyard) {
+    return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://play.vidyard.com/${vidyard[1]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay;fullscreen" allowfullscreen></iframe></div>`;
+  }
+
+  // Dailymotion: dailymotion.com/video/ID
+  const dm = url.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
+  if (dm) {
+    return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://www.dailymotion.com/embed/video/${dm[1]}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allow="autoplay;fullscreen" allowfullscreen></iframe></div>`;
+  }
+
+  // Twitch: twitch.tv/videos/ID (VOD) or clips.twitch.tv/SLUG
+  const twitchVod = url.match(/twitch\.tv\/videos\/(\d+)/);
+  if (twitchVod) {
+    return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://player.twitch.tv/?video=${twitchVod[1]}&parent=${window.location.hostname}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>`;
+  }
+  const twitchClip = url.match(/(?:clips\.twitch\.tv\/|twitch\.tv\/\w+\/clip\/)([a-zA-Z0-9_-]+)/);
+  if (twitchClip) {
+    return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:12px 0"><iframe src="https://clips.twitch.tv/embed?clip=${twitchClip[1]}&parent=${window.location.hostname}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>`;
+  }
+
   // Direct video file (.mp4, .webm, .ogg)
   if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) {
     return `<div style="margin:12px 0"><video controls style="width:100%;border-radius:8px;max-height:480px"><source src="${url}">Your browser does not support the video tag.</video></div>`;
@@ -75,10 +109,15 @@ function getVideoEmbedHtml(url) {
 }
 
 function detectPlatform(url) {
-  if (/youtube\.com|youtu\.be/i.test(url)) return 'YouTube';
-  if (/vimeo\.com/i.test(url))             return 'Vimeo';
-  if (/loom\.com/i.test(url))              return 'Loom';
-  if (/\.(mp4|webm|ogg)/i.test(url))       return 'video file';
+  if (/youtube\.com|youtu\.be/i.test(url))  return 'YouTube';
+  if (/vimeo\.com/i.test(url))              return 'Vimeo';
+  if (/loom\.com/i.test(url))               return 'Loom';
+  if (/zoom\.us/i.test(url))                return 'Zoom';
+  if (/wistia\.(?:com|net)/i.test(url))     return 'Wistia';
+  if (/vidyard\.com/i.test(url))            return 'Vidyard';
+  if (/dailymotion\.com/i.test(url))        return 'Dailymotion';
+  if (/twitch\.tv|clips\.twitch\.tv/i.test(url)) return 'Twitch';
+  if (/\.(mp4|webm|ogg)/i.test(url))        return 'video file';
   return null;
 }
 
@@ -193,7 +232,7 @@ function ArticleEditor({ folderId, article, onSave, onCancel }) {
   function insertVideo() {
     const html = getVideoEmbedHtml(videoUrl);
     if (!html) {
-      toast('Unrecognized URL. Paste a YouTube, Vimeo, Loom, or direct .mp4/.webm link.', 'error');
+      toast('Unrecognized URL. Paste a YouTube, Vimeo, Loom, Zoom, Wistia, Vidyard, Dailymotion, Twitch, or direct .mp4/.webm link.', 'error');
       return;
     }
     // Grab the saved range before any state changes clear it
@@ -436,7 +475,7 @@ function ArticleEditor({ folderId, article, onSave, onCancel }) {
                   ? getVideoEmbedHtml(videoUrl)
                     ? `✓ Detected: ${detectPlatform(videoUrl)}`
                     : '✗ Unrecognized — try a YouTube, Vimeo, or Loom link, or a direct .mp4 URL'
-                  : 'Supports YouTube, Vimeo, Loom, or a direct .mp4 / .webm link'}
+                  : 'Supports YouTube, Vimeo, Loom, Zoom, Wistia, Vidyard, Dailymotion, Twitch, or a direct .mp4 / .webm link'}
               </div>
             </div>
             <div className="modal-footer">
@@ -529,7 +568,14 @@ function ArticleViewer({ article, onEdit, onDelete, onClose, onStatusChange, can
       {/* Content */}
       <div
         style={{ padding: '24px', fontSize: 14, lineHeight: 1.75, color: '#1F2937' }}
-        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content || '<p style="color:#9CA3AF">No content.</p>') }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(
+          article.content || '<p style="color:#9CA3AF">No content.</p>',
+          {
+            ADD_TAGS: ['iframe'],
+            ADD_ATTR: ['allow', 'allowfullscreen', 'src', 'style', 'frameborder', 'scrolling'],
+            ALLOWED_URI_REGEXP: /^(?:(?:https?):\/\/(?:www\.youtube(?:-nocookie)?\.com|player\.vimeo\.com|www\.loom\.com|(?:[\w-]+\.)?zoom\.us|fast\.wistia\.(?:com|net)|(?:www\.)?vidyard\.com|(?:www\.)?dailymotion\.com|(?:www\.)?twitch\.tv|clips\.twitch\.tv|player\.twitch\.tv|(?:www\.)?kaltura\.com|cdnapisec\.kaltura\.com)|(?!javascript:))/i,
+          }
+        ) }}
       />
 
       {/* Attachments */}

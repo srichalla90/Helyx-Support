@@ -116,10 +116,10 @@ export const api = {
   deleteAnnouncement:     (id) => request(`/announcements/${id}`, { method: 'DELETE' }),
 
   // Feature Requests / Ideas Board
-  getFeatureRequests:   (params = {}) => request('/features?' + new URLSearchParams(params)),
-  getFeatureRequest:    (id, params = {}) => request(`/features/${id}` + (Object.keys(params).length ? '?' + new URLSearchParams(params) : '')),
+  getFeatureRequests:   () => request('/features'),
+  getFeatureRequest:    (id) => request(`/features/${id}`),
   submitFeatureRequest: (body) => request('/features', { method: 'POST', body }),
-  voteFeatureRequest:   (id, body) => request(`/features/${id}/vote`, { method: 'POST', body }),
+  voteFeatureRequest:   (id) => request(`/features/${id}/vote`, { method: 'POST', body: {} }),
   getFeatureVoters:     (id) => request(`/features/${id}/voters`),
   updateFeatureStatus:  (id, status) => request(`/features/${id}/status`, { method: 'PUT', body: { status } }),
   addFeatureComment:    (id, body) => request(`/features/${id}/comments`, { method: 'POST', body }),
@@ -182,6 +182,38 @@ export const api = {
 
   // Ticket Merge
   mergeTicket: (targetId, sourceId) => request(`/tickets/${targetId}/merge`, { method: 'POST', body: { source_ticket_id: sourceId } }),
+
+  // System Status
+  getSystemStatus:    () => fetch('/api/status').then((r) => r.json()),
+  updateSystemStatus: (body) => request('/status', { method: 'PUT', body }),
+
+  // Ticket Templates
+  getTicketTemplates:    () => request('/ticket-templates'),
+  createTicketTemplate:  (body) => request('/ticket-templates', { method: 'POST', body }),
+  updateTicketTemplate:  (id, body) => request(`/ticket-templates/${id}`, { method: 'PUT', body }),
+  deleteTicketTemplate:  (id) => request(`/ticket-templates/${id}`, { method: 'DELETE' }),
+
+  // KB Articles search
+  searchKbArticles: (q) => request(`/kb/articles/search?q=${encodeURIComponent(q)}`),
+
+  // Community Q&A Forum
+  getForumQuestions:   (params = {}) => request('/forum?' + new URLSearchParams(params)),
+  getForumQuestion:    (id) => request(`/forum/${id}`),
+  createForumQuestion: (body) => request('/forum', { method: 'POST', body }),
+  deleteForumQuestion: (id) => request(`/forum/${id}`, { method: 'DELETE' }),
+  addForumAnswer:      (questionId, body) => request(`/forum/${questionId}/answers`, { method: 'POST', body }),
+  acceptForumAnswer:   (answerId) => request(`/forum/answers/${answerId}/accept`, { method: 'PATCH' }),
+  deleteForumAnswer:   (answerId) => request(`/forum/answers/${answerId}`, { method: 'DELETE' }),
+
+  // Downloads
+  getDownloads:    (params = {}) => request('/downloads?' + new URLSearchParams(params)),
+  getAllDownloads:  () => request('/downloads/all'),
+  createDownload:  (formData) =>
+    fetch('/api/downloads', { method: 'POST', body: formData, headers: { ...getAuthHeader() } })
+      .then(async (res) => { const d = await res.json(); if (!res.ok) throw new Error(d.error || 'Upload failed'); return d; }),
+  updateDownload:  (id, body) => request(`/downloads/${id}`, { method: 'PUT', body }),
+  deleteDownload:  (id) => request(`/downloads/${id}`, { method: 'DELETE' }),
+  downloadFileUrl: (filename) => `/api/downloads/file/${filename}`,
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────

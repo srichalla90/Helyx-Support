@@ -334,6 +334,64 @@ READY.then(() => {
       value     TEXT,
       PRIMARY KEY (ticket_id, field_id)
     );
+
+    CREATE TABLE IF NOT EXISTS ticket_templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT    NOT NULL,
+      description TEXT    NOT NULL DEFAULT '',
+      icon        TEXT    NOT NULL DEFAULT '📋',
+      type        TEXT    NOT NULL DEFAULT '',
+      product     TEXT    NOT NULL DEFAULT '',
+      priority    TEXT    NOT NULL DEFAULT 'Medium',
+      body        TEXT    NOT NULL DEFAULT '',
+      position    INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT    NOT NULL,
+      updated_at  TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS forum_questions (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      title         TEXT    NOT NULL,
+      body          TEXT    NOT NULL DEFAULT '',
+      author_email  TEXT    NOT NULL,
+      author_name   TEXT    NOT NULL DEFAULT '',
+      is_answered   INTEGER NOT NULL DEFAULT 0,
+      answer_count  INTEGER NOT NULL DEFAULT 0,
+      view_count    INTEGER NOT NULL DEFAULT 0,
+      tags          TEXT    NOT NULL DEFAULT '',
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS forum_answers (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      question_id   INTEGER NOT NULL REFERENCES forum_questions(id) ON DELETE CASCADE,
+      body          TEXT    NOT NULL,
+      author_email  TEXT    NOT NULL,
+      author_name   TEXT    NOT NULL DEFAULT '',
+      is_staff      INTEGER NOT NULL DEFAULT 0,
+      is_accepted   INTEGER NOT NULL DEFAULT 0,
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS downloads (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      title         TEXT    NOT NULL,
+      description   TEXT    NOT NULL DEFAULT '',
+      category      TEXT    NOT NULL DEFAULT 'General',
+      product       TEXT    NOT NULL DEFAULT '',
+      version       TEXT    NOT NULL DEFAULT '',
+      file_type     TEXT    NOT NULL DEFAULT '',
+      file_size     TEXT    NOT NULL DEFAULT '',
+      url           TEXT    NOT NULL DEFAULT '',
+      filename      TEXT    NOT NULL DEFAULT '',
+      is_external   INTEGER NOT NULL DEFAULT 0,
+      is_active     INTEGER NOT NULL DEFAULT 1,
+      position      INTEGER NOT NULL DEFAULT 0,
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
   `);
 
   // Add role column to existing users table if it doesn't exist (migration)

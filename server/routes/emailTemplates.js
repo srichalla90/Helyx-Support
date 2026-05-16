@@ -8,11 +8,9 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
-
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Only admins can perform this action' });
-  next();
-}
+const adminOnly    = require('../middleware/adminOnly');
+const staffOnly    = require('../middleware/staffOnly');
+const handleError   = require('../middleware/handleError');
 
 const ALLOWED_KEYS = new Set([
   'ticket_created_customer',
@@ -25,21 +23,21 @@ const ALLOWED_KEYS = new Set([
   'agent_mentioned',
 ]);
 
-router.get('/', (_req, res) => {
+router.get('/', staffOnly, (_req, res) => {
   try {
     const rows = db.prepare('SELECT * FROM email_templates').all();
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
-router.get('/:key', (req, res) => {
+router.get('/:key', staffOnly, (req, res) => {
   const { key } = req.params;
   if (!ALLOWED_KEYS.has(key)) return res.status(404).json({ error: 'Template not found' });
   try {
     const row = db.prepare('SELECT * FROM email_templates WHERE key = ?').get(key);
     if (!row) return res.status(404).json({ error: 'Template not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 router.put('/:key', adminOnly, (req, res) => {
@@ -56,7 +54,7 @@ router.put('/:key', adminOnly, (req, res) => {
     `).run(key, subject || '', body || '', enabled !== false ? 1 : 0);
     const row = db.prepare('SELECT * FROM email_templates WHERE key = ?').get(key);
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

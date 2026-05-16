@@ -23,6 +23,10 @@ const csatRouter            = require('./routes/csat');
 const slaRouter             = require('./routes/sla');
 const automationRouter      = require('./routes/automation');
 const customFieldsRouter    = require('./routes/customFields');
+const statusRouter          = require('./routes/status');
+const ticketTemplatesRouter = require('./routes/ticketTemplates');
+const forumRouter           = require('./routes/forum');
+const downloadsRouter       = require('./routes/downloads');
 const subscriptionManager = require('./services/subscriptionManager');
 const requireAuth         = require('./middleware/requireAuth');
 
@@ -43,7 +47,7 @@ app.use('/api/tickets',       requireAuth, ticketsRouter);
 app.use('/api/groups',        requireAuth, groupsRouter);
 app.use('/api/users',         requireAuth, usersRouter);
 app.use('/api/customers',     requireAuth, customersRouter);
-app.use('/api/email',         requireAuth, emailRouter);
+app.use('/api/email',         emailRouter);             // ingest uses X-Ingest-Secret; no global JWT
 app.use('/api/kb',            requireAuth, kbRouter);
 app.use('/api/announcements', requireAuth, announcementsRouter);
 app.use('/api/features',      requireAuth, featuresRouter);
@@ -54,6 +58,10 @@ app.use('/api/csat',             csatRouter);          // has both public + prot
 app.use('/api/sla',              requireAuth, slaRouter);
 app.use('/api/automation',       requireAuth, automationRouter);
 app.use('/api/custom-fields',    requireAuth, customFieldsRouter);
+app.use('/api/status',           statusRouter);          // GET public, PUT requires auth (checked in route)
+app.use('/api/ticket-templates', requireAuth, ticketTemplatesRouter);
+app.use('/api/forum',            requireAuth, forumRouter);
+app.use('/api/downloads',        downloadsRouter);   // GET / public · GET /all + POST/PUT/DELETE → admin only (enforced in route)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
@@ -70,7 +78,10 @@ app.get('/api/stats', requireAuth, (req, res) => {
       by_product:  db.prepare(`SELECT COALESCE(product,'Unassigned') AS product, COUNT(*) AS n FROM tickets GROUP BY product`).all(),
     };
     res.json(stats);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    console.error('[stats]', e);
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message });
+  }
 });
 
 // ── Serve React build in production ──────────────────────────────────────────

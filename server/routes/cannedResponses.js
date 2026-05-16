@@ -1,11 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Only admins can perform this action' });
-  next();
-}
+const adminOnly    = require('../middleware/adminOnly');
+const staffOnly    = require('../middleware/staffOnly');
+const handleError   = require('../middleware/handleError');
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
@@ -14,8 +12,8 @@ router.param('id', (req, res, next, val) => {
   next();
 });
 
-// GET / — return all canned responses ordered by category then title
-router.get('/', (req, res) => {
+// GET / — staff only (agents/admins); customers should not see canned response content
+router.get('/', staffOnly, (req, res) => {
   try {
     const responses = db.prepare('SELECT * FROM canned_responses ORDER BY category, title').all();
     res.json(responses);
@@ -25,8 +23,8 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /:id — single canned response
-router.get('/:id', (req, res) => {
+// GET /:id — staff only
+router.get('/:id', staffOnly, (req, res) => {
   try {
     const response = db.prepare('SELECT * FROM canned_responses WHERE id = ?').get(req.params.id);
     if (!response) return res.status(404).json({ error: 'Canned response not found' });

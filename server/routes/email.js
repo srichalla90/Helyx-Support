@@ -22,12 +22,22 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
+const handleError   = require('../middleware/handleError');
 
 function stripHtml(html) {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 router.post('/ingest', (req, res) => {
+  // Shared-secret validation — set INGEST_SECRET in .env to enable
+  const secret = process.env.INGEST_SECRET;
+  if (secret) {
+    const provided = req.headers['x-ingest-secret'];
+    if (!provided || provided !== secret) {
+      return res.status(401).json({ error: 'Invalid or missing X-Ingest-Secret header' });
+    }
+  }
+
   const { from, subject, text, html } = req.body;
 
   const title       = (subject || 'No Subject').trim();
@@ -48,9 +58,7 @@ router.post('/ingest', (req, res) => {
 
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(ticket);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

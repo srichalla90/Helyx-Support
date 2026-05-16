@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router({ mergeParams: true });
 const db      = require('../db');
+const handleError   = require('../middleware/handleError');
 
 function getTags(ticketId) {
   return db.prepare('SELECT tag FROM ticket_tags WHERE ticket_id = ? ORDER BY tag ASC')
@@ -13,9 +14,7 @@ router.get('/', (req, res) => {
   try {
     const tags = getTags(req.params.ticketId);
     res.json(tags);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { return handleError(res, e); }
 });
 
 // POST / — add a tag
@@ -36,9 +35,7 @@ router.post('/', (req, res) => {
       .run(req.params.ticketId, tag);
     const tags = getTags(req.params.ticketId);
     res.json(tags);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { return handleError(res, e); }
 });
 
 // DELETE /:tag — remove a tag
@@ -48,9 +45,7 @@ router.delete('/:tag', (req, res) => {
       .run(req.params.ticketId, req.params.tag);
     const tags = getTags(req.params.ticketId);
     res.json(tags);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

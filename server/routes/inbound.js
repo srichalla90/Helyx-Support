@@ -20,6 +20,7 @@ const graph   = require('../services/graph');
 const notify  = require('../services/emailNotifications');
 const path    = require('path');
 const fs      = require('fs');
+const handleError   = require('../middleware/handleError');
 
 const ATTACH_DIR = path.join(__dirname, '..', 'uploads', 'ticket_attachments');
 fs.mkdirSync(ATTACH_DIR, { recursive: true });

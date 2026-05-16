@@ -24,6 +24,7 @@ const db      = require('../db');
 const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
+const handleError   = require('../middleware/handleError');
 
 // Only agents and admins may write to the KB — customers are read-only
 const staffOnly = (req, res, next) => {
@@ -82,7 +83,7 @@ router.get('/tree', (_req, res) => {
     const files    = db.prepare('SELECT * FROM kb_files    ORDER BY display_name ASC').all();
     const articles = db.prepare('SELECT * FROM kb_articles ORDER BY title ASC').all();
     res.json({ folders, files, articles });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/kb/folders ──────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ router.post('/folders', staffOnly, (req, res) => {
       `INSERT INTO kb_folders (name, parent_id, created_at) VALUES (?, ?, ?)`
     ).run(name.trim(), parent_id || null, now());
     res.status(201).json(db.prepare('SELECT * FROM kb_folders WHERE id = ?').get(result.lastInsertRowid));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/kb/folders/:id ───────────────────────────────────────────────────
@@ -107,7 +108,7 @@ router.put('/folders/:id', staffOnly, (req, res) => {
     const folder = db.prepare('SELECT * FROM kb_folders WHERE id = ?').get(id);
     if (!folder) return res.status(404).json({ error: 'Folder not found' });
     res.json(folder);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/kb/folders/:id ────────────────────────────────────────────────
@@ -128,7 +129,7 @@ router.delete('/folders/:id', staffOnly, (req, res) => {
       db.prepare('DELETE FROM kb_folders WHERE id = ?').run(fid);
     }
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/kb/folders/:id/files ───────────────────────────────────────────
@@ -144,7 +145,7 @@ router.post('/folders/:id/files', staffOnly, upload.array('files', 20), (req, re
       inserted.push(db.prepare('SELECT * FROM kb_files WHERE id = ?').get(result.lastInsertRowid));
     }
     res.status(201).json(inserted);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/kb/files/:id ──────────────────────────────────────────────────
@@ -156,7 +157,7 @@ router.delete('/files/:id', staffOnly, (req, res) => {
     try { fs.unlinkSync(path.join(UPLOAD_DIR, file.filename)); } catch (_) {}
     db.prepare('DELETE FROM kb_files WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/kb/files/:id/download ───────────────────────────────────────────
@@ -168,7 +169,7 @@ router.get('/files/:id/download', (req, res) => {
     const filePath = path.join(UPLOAD_DIR, file.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on disk' });
     res.download(filePath, file.original_name || file.display_name);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── Version helper ────────────────────────────────────────────────────────────
@@ -207,7 +208,24 @@ router.post('/articles', staffOnly, (req, res) => {
     ).run(Number(folder_id), title.trim(), content, safeStatus, version, ts, ts);
     const article = db.prepare('SELECT * FROM kb_articles WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ ...article, files: [] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
+});
+
+// ── GET /api/kb/articles/search?q= ───────────────────────────────────────────
+router.get('/articles/search', (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) return res.json([]);
+  try {
+    const like = `%${q}%`;
+    const articles = db.prepare(
+      `SELECT id, folder_id, title, status, version, updated_at
+       FROM kb_articles
+       WHERE status = 'published' AND (title LIKE ? OR content LIKE ?)
+       ORDER BY updated_at DESC
+       LIMIT 20`
+    ).all(like, like);
+    res.json(articles);
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/kb/articles/:id ──────────────────────────────────────────────────
@@ -218,7 +236,7 @@ router.get('/articles/:id', (req, res) => {
     if (!article) return res.status(404).json({ error: 'Article not found' });
     const files = db.prepare('SELECT * FROM kb_article_files WHERE article_id = ? ORDER BY created_at ASC').all(id);
     res.json({ ...article, files });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── PUT /api/kb/articles/:id ──────────────────────────────────────────────────
@@ -237,7 +255,7 @@ router.put('/articles/:id', staffOnly, (req, res) => {
     const article = db.prepare('SELECT * FROM kb_articles WHERE id = ?').get(id);
     const files = db.prepare('SELECT * FROM kb_article_files WHERE article_id = ? ORDER BY created_at ASC').all(id);
     res.json({ ...article, files });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/kb/articles/:id ───────────────────────────────────────────────
@@ -254,7 +272,7 @@ router.delete('/articles/:id', staffOnly, (req, res) => {
     db.prepare('DELETE FROM kb_article_files WHERE article_id = ?').run(id);
     db.prepare('DELETE FROM kb_articles WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── POST /api/kb/articles/:id/files ──────────────────────────────────────────
@@ -270,7 +288,7 @@ router.post('/articles/:id/files', staffOnly, uploadArticle.array('files', 20), 
       inserted.push(db.prepare('SELECT * FROM kb_article_files WHERE id = ?').get(result.lastInsertRowid));
     }
     res.status(201).json(inserted);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── DELETE /api/kb/article-files/:id ─────────────────────────────────────────
@@ -282,7 +300,7 @@ router.delete('/article-files/:id', staffOnly, (req, res) => {
     try { fs.unlinkSync(path.join(ARTICLE_UPLOAD_DIR, file.filename)); } catch (_) {}
     db.prepare('DELETE FROM kb_article_files WHERE id = ?').run(id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 // ── GET /api/kb/article-files/:id/download ───────────────────────────────────
@@ -294,7 +312,7 @@ router.get('/article-files/:id/download', (req, res) => {
     const filePath = path.join(ARTICLE_UPLOAD_DIR, file.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on disk' });
     res.download(filePath, file.original_name || file.display_name);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { return handleError(res, e); }
 });
 
 module.exports = router;

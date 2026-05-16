@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import DOMPurify from 'dompurify';
-import { api } from '../api';
+import { api, TICKET_TYPES, PRODUCTS, PRIORITIES } from '../api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../components/Toast';
 import EmailTemplatesPage from './EmailTemplatesPage';
@@ -627,6 +627,300 @@ function CustomFieldsTab() {
   );
 }
 
+// ── System Status Tab ─────────────────────────────────────────────────────────
+const STATUS_OPTIONS = [
+  { value: 'operational', label: '✅ Operational',  color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', description: 'All systems are running normally.' },
+  { value: 'degraded',    label: '⚠️ Degraded',     color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', description: 'Some systems are experiencing issues.' },
+  { value: 'outage',      label: '🔴 Outage',       color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', description: 'A major outage is currently in progress.' },
+  { value: 'maintenance', label: '🔧 Maintenance',  color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', description: 'Systems are undergoing scheduled maintenance.' },
+];
+
+function SystemStatusTab() {
+  const toast = useToast();
+  const user  = useUser();
+  const isAdmin = user?.role === 'admin';
+  const [status,  setStatus]  = useState('operational');
+  const [message, setMessage] = useState('');
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+
+  useEffect(() => {
+    api.getSystemStatus()
+      .then((d) => { setStatus(d.status || 'operational'); setMessage(d.message || ''); setUpdatedAt(d.updated_at); })
+      .catch(() => toast('Failed to load system status', 'error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const d = await api.updateSystemStatus({ status, message });
+      setUpdatedAt(d.updated_at);
+      toast('System status updated', 'success');
+    } catch (e) { toast(e.message || 'Failed to save', 'error'); }
+    finally { setSaving(false); }
+  }
+
+  const current = STATUS_OPTIONS.find((o) => o.value === status) || STATUS_OPTIONS[0];
+
+  if (loading) return <div style={{ padding: 32, color: '#6B7280', fontSize: 14 }}>Loading…</div>;
+
+  return (
+    <div style={{ maxWidth: 620 }}>
+      <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 28, marginBottom: 24 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>System Status</h3>
+        <p style={{ fontSize: 13, color: '#6B7280', margin: '0 0 24px' }}>
+          Visible to customers on the Support Portal. Use this to communicate outages or maintenance windows.
+        </p>
+
+        {/* Current status badge */}
+        <div style={{ background: current.bg, border: `1px solid ${current.border}`, borderRadius: 10, padding: '14px 18px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: current.color }}>{current.label}</div>
+            <div style={{ fontSize: 12, color: current.color, opacity: 0.8, marginTop: 2 }}>{current.description}</div>
+          </div>
+          {updatedAt && (
+            <div style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'right' }}>
+              Last updated<br />{new Date(updatedAt).toLocaleString()}
+            </div>
+          )}
+        </div>
+
+        {/* Status selector */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 10 }}>Status</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                disabled={!isAdmin}
+                onClick={() => setStatus(opt.value)}
+                style={{
+                  padding: '12px 16px', borderRadius: 9, cursor: isAdmin ? 'pointer' : 'not-allowed',
+                  border: status === opt.value ? `2px solid ${opt.color}` : '2px solid #E5E7EB',
+                  background: status === opt.value ? opt.bg : '#FAFAFA',
+                  textAlign: 'left', transition: 'all 0.15s',
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: opt.color }}>{opt.label}</div>
+                <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{opt.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Message */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+            Status Message <span style={{ fontWeight: 400, color: '#9CA3AF' }}>(optional)</span>
+          </label>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            disabled={!isAdmin}
+            rows={3}
+            placeholder="e.g. We are investigating increased API error rates…"
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {isAdmin ? (
+          <button
+            onClick={save} disabled={saving}
+            style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#93C5FD' : '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}
+          >
+            {saving ? 'Saving…' : 'Update Status'}
+          </button>
+        ) : (
+          <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#92400E' }}>
+            🔒 Only admins can update system status.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Ticket Templates Tab ───────────────────────────────────────────────────────
+const TMPL_ICONS = ['📋', '🐛', '💡', '❓', '🔑', '📣', '🚨', '⚙️', '📊', '🔧', '🖥️', '🌐'];
+
+function TicketTemplatesTab() {
+  const toast   = useToast();
+  const user    = useUser();
+  const isAdmin = user?.role === 'admin';
+  const [templates, setTemplates] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [editing,   setEditing]   = useState(null); // null = list, {} = new, {id,...} = edit
+
+  const TT = TICKET_TYPES, PR = PRODUCTS, PRIO = PRIORITIES;
+
+  useEffect(() => {
+    api.getTicketTemplates()
+      .then(setTemplates)
+      .catch(() => toast('Failed to load templates', 'error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    try {
+      let result;
+      if (editing.id) {
+        result = await api.updateTicketTemplate(editing.id, editing);
+        setTemplates((prev) => prev.map((t) => t.id === editing.id ? result : t));
+      } else {
+        result = await api.createTicketTemplate({ ...editing, position: templates.length });
+        setTemplates((prev) => [...prev, result]);
+      }
+      toast('Template saved', 'success');
+      setEditing(null);
+    } catch (e) { toast(e.message || 'Failed to save', 'error'); }
+  }
+
+  async function del(id) {
+    if (!window.confirm('Delete this template?')) return;
+    try {
+      await api.deleteTicketTemplate(id);
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      toast('Template deleted', 'success');
+    } catch (e) { toast(e.message || 'Failed to delete', 'error'); }
+  }
+
+  if (loading) return <div style={{ padding: 32, color: '#6B7280', fontSize: 14 }}>Loading…</div>;
+
+  if (editing !== null) {
+    const isNew = !editing.id;
+    return (
+      <div style={{ maxWidth: 660 }}>
+        <button onClick={() => setEditing(null)} style={{ background: 'none', border: 'none', color: '#6B7280', fontSize: 13, cursor: 'pointer', marginBottom: 20, padding: 0 }}>
+          ← Back to Templates
+        </button>
+        <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 28 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 24px' }}>{isNew ? 'New Template' : 'Edit Template'}</h3>
+
+          {/* Icon picker */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>Icon</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {TMPL_ICONS.map((ic) => (
+                <button key={ic} onClick={() => setEditing((e) => ({ ...e, icon: ic }))}
+                  style={{ fontSize: 20, padding: '6px 10px', borderRadius: 8, border: editing.icon === ic ? '2px solid #2563EB' : '2px solid #E5E7EB', background: editing.icon === ic ? '#EFF6FF' : '#FAFAFA', cursor: 'pointer' }}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Name */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Name *</label>
+            <input value={editing.name || ''} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))}
+              placeholder="e.g. Bug Report" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 13, boxSizing: 'border-box' }} />
+          </div>
+
+          {/* Description */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Short Description</label>
+            <input value={editing.description || ''} onChange={(e) => setEditing((p) => ({ ...p, description: e.target.value }))}
+              placeholder="Shown under the template name" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 13, boxSizing: 'border-box' }} />
+          </div>
+
+          {/* Type / Product / Priority */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
+            {[
+              { key: 'type',     label: 'Default Type',     opts: [{ v: '', l: '— None —' }, ...TT.map((t) => ({ v: t, l: t }))] },
+              { key: 'product',  label: 'Default Product',  opts: [{ v: '', l: '— None —' }, ...PR.map((p) => ({ v: p, l: p }))] },
+              { key: 'priority', label: 'Default Priority', opts: PRIO.map((p) => ({ v: p, l: p })) },
+            ].map(({ key, label, opts }) => (
+              <div key={key}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>{label}</label>
+                <select value={editing[key] || ''} onChange={(e) => setEditing((p) => ({ ...p, [key]: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 13 }}>
+                  {opts.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          {/* Body */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Pre-filled Description <span style={{ fontWeight: 400, color: '#9CA3AF' }}>(optional)</span>
+            </label>
+            <textarea value={editing.body || ''} onChange={(e) => setEditing((p) => ({ ...p, body: e.target.value }))}
+              rows={5} placeholder="e.g. Steps to reproduce:&#10;1.&#10;2.&#10;&#10;Expected:&#10;Actual:"
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button onClick={() => setEditing(null)} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button onClick={save} disabled={!editing.name?.trim()}
+              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: editing.name?.trim() ? '#2563EB' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: editing.name?.trim() ? 'pointer' : 'not-allowed' }}>
+              Save Template
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 720 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Ticket Templates</h3>
+          <p style={{ fontSize: 13, color: '#6B7280', margin: '4px 0 0' }}>Pre-configured templates customers can pick when submitting a ticket.</p>
+        </div>
+        {isAdmin && (
+          <button onClick={() => setEditing({ icon: '📋', name: '', description: '', type: '', product: '', priority: 'Medium', body: '' })}
+            style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            + New Template
+          </button>
+        )}
+      </div>
+
+      {templates.length === 0 ? (
+        <div style={{ background: '#F9FAFB', border: '2px dashed #E5E7EB', borderRadius: 12, padding: '40px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No templates yet</div>
+          <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>Templates help customers submit better-structured tickets.</div>
+          {isAdmin && (
+            <button onClick={() => setEditing({ icon: '📋', name: '', description: '', type: '', product: '', priority: 'Medium', body: '' })}
+              style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+              Create your first template
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          {templates.map((t) => (
+            <div key={t.id} style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: '16px 18px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{ fontSize: 28, flexShrink: 0 }}>{t.icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{t.name}</div>
+                {t.description && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{t.description}</div>}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {t.type     && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#EFF6FF', color: '#1D4ED8' }}>{t.type}</span>}
+                  {t.product  && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#F3E8FF', color: '#7E22CE' }}>{t.product}</span>}
+                  {t.priority && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#FFF7ED', color: '#C2410C' }}>{t.priority}</span>}
+                </div>
+              </div>
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => setEditing({ ...t })} style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>Edit</button>
+                  <button onClick={() => del(t.id)} style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', cursor: 'pointer', color: '#DC2626' }}>Del</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Automation Rules Tab ──────────────────────────────────────────────────────
 const CONDITION_FIELDS = ['priority', 'status', 'type', 'source', 'product', 'title', 'requester_email'];
 const CONDITION_OPS    = ['is', 'is_not', 'contains', 'not_contains'];
@@ -894,13 +1188,15 @@ export default function SettingsPage() {
   }
 
   const TABS = [
-    { key: 'general',         label: 'General' },
-    { key: 'email-templates', label: 'Email Templates' },
-    { key: 'canned',          label: 'Canned Responses' },
-    { key: 'sla',             label: 'SLA' },
-    { key: 'automation',      label: 'Automation' },
-    { key: 'csat',            label: 'CSAT' },
-    { key: 'custom-fields',   label: 'Custom Fields' },
+    { key: 'general',          label: 'General' },
+    { key: 'email-templates',  label: 'Email Templates' },
+    { key: 'canned',           label: 'Canned Responses' },
+    { key: 'sla',              label: 'SLA' },
+    { key: 'automation',       label: 'Automation' },
+    { key: 'csat',             label: 'CSAT' },
+    { key: 'custom-fields',    label: 'Custom Fields' },
+    { key: 'ticket-templates', label: 'Ticket Templates' },
+    { key: 'system-status',    label: 'System Status' },
   ];
 
   const TAB_STYLE = (tab) => ({
@@ -919,12 +1215,14 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {activeTab === 'email-templates' ? <EmailTemplatesPage /> :
-       activeTab === 'canned'          ? <CannedResponsesTab /> :
-       activeTab === 'sla'             ? <SLATab /> :
-       activeTab === 'automation'      ? <AutomationTab /> :
-       activeTab === 'csat'            ? <CSATTab /> :
-       activeTab === 'custom-fields'   ? <CustomFieldsTab /> :
+      {activeTab === 'email-templates'  ? <EmailTemplatesPage /> :
+       activeTab === 'canned'           ? <CannedResponsesTab /> :
+       activeTab === 'sla'              ? <SLATab /> :
+       activeTab === 'automation'       ? <AutomationTab /> :
+       activeTab === 'csat'             ? <CSATTab /> :
+       activeTab === 'custom-fields'    ? <CustomFieldsTab /> :
+       activeTab === 'ticket-templates' ? <TicketTemplatesTab /> :
+       activeTab === 'system-status'    ? <SystemStatusTab /> :
       (
         <form onSubmit={handleSave} style={{ maxWidth: 680 }}>
           <Section title="General" description="Basic branding and identity used across the portal and outbound emails.">

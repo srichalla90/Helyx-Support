@@ -1,13 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
-
-function adminOnly(req, res, next) {
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Only admins can perform this action' });
-  }
-  next();
-}
+const adminOnly    = require('../middleware/adminOnly');
+const handleError   = require('../middleware/handleError');
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
