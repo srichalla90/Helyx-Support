@@ -17,6 +17,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const adminOnly    = require('../middleware/adminOnly');
+const staffOnly    = require('../middleware/staffOnly');
 const handleError   = require('../middleware/handleError');
 
 const FIELD_TYPES = ['text', 'number', 'dropdown', 'date', 'checkbox', 'url', 'textarea'];
@@ -62,24 +63,40 @@ router.post('/', adminOnly, (req, res) => {
   }
 
   try {
-    // Get next position
-    const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM custom_field_definitions').get().p;
-    const pos = position !== undefined ? Number(position) : maxPos + 1;
+    const optionsJson = options ? JSON.stringify(options) : null;
+    const reqVal = required ? 1 : 0;
 
-    const ts = new Date().toISOString();
-    const result = db.prepare(`
-      INSERT INTO custom_field_definitions (name, label, field_type, options, required, position, active, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-    `).run(
-      fieldName,
-      label.trim(),
-      field_type || 'text',
-      options ? JSON.stringify(options) : null,
-      required ? 1 : 0,
-      pos,
-      ts,
-    );
-    const row = db.prepare('SELECT * FROM custom_field_definitions WHERE id = ?').get(result.lastInsertRowid);
+    // If an inactive field exists with the same name, reactivate it instead of inserting
+    const inactive = db.prepare(
+      `SELECT id FROM custom_field_definitions WHERE name = ? AND active = 0`
+    ).get(fieldName);
+
+    // Also guard against an active duplicate
+    const active = db.prepare(
+      `SELECT id FROM custom_field_definitions WHERE name = ? AND active = 1`
+    ).get(fieldName);
+    if (active) return res.status(409).json({ error: 'A field with this name already exists' });
+
+    let rowId;
+    if (inactive) {
+      // Reactivate the soft-deleted field with the new settings
+      db.prepare(
+        `UPDATE custom_field_definitions SET label = ?, field_type = ?, options = ?, required = ?, active = 1 WHERE id = ?`
+      ).run(label.trim(), field_type || 'text', optionsJson, reqVal, inactive.id);
+      rowId = inactive.id;
+    } else {
+      // Get next position
+      const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM custom_field_definitions').get().p;
+      const pos = position !== undefined ? Number(position) : maxPos + 1;
+      const ts = new Date().toISOString();
+      const result = db.prepare(`
+        INSERT INTO custom_field_definitions (name, label, field_type, options, required, position, active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(fieldName, label.trim(), field_type || 'text', optionsJson, reqVal, pos, ts);
+      rowId = result.lastInsertRowid;
+    }
+
+    const row = db.prepare('SELECT * FROM custom_field_definitions WHERE id = ?').get(rowId);
     res.status(201).json({
       ...row,
       options:  row.options  ? JSON.parse(row.options)  : [],
@@ -170,7 +187,7 @@ router.get('/ticket/:ticketId', (req, res) => {
 
 // ── PUT /api/custom-fields/ticket/:ticketId — batch save values ───────────────
 // Body: { "field_id": "value", ... } — field_id as numeric keys, values as strings
-router.put('/ticket/:ticketId', (req, res) => {
+router.put('/ticket/:ticketId', staffOnly, (req, res) => {
   const ticketId = Number(req.params.ticketId);
   const ticket = db.prepare('SELECT id FROM tickets WHERE id = ?').get(ticketId);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });

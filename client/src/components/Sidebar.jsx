@@ -9,6 +9,10 @@ const NAV = [
   { id: 'resolved',  icon: '✅', label: 'Resolved' },
 ];
 
+const HOME_NAV = [
+  { id: 'home', icon: '🏠', label: 'Operations Center' },
+];
+
 const ANALYTICS = [
   { id: 'reports',       icon: '📊', label: 'Reports' },
   { id: 'knowledgebase', icon: '📚', label: 'Knowledge Base' },
@@ -17,10 +21,13 @@ const ANALYTICS = [
 ];
 
 const SETTINGS = [
-  { id: 'groups',    icon: '👥', label: 'Groups' },
-  { id: 'users',     icon: '🧑', label: 'Users' },
-  { id: 'customers', icon: '🏢', label: 'Customers' },
-  { id: 'settings',  icon: '⚙️', label: 'Settings', adminOnly: true },
+  { id: 'contacts',    icon: '📇', label: 'Contacts' },
+  { id: 'groups',      icon: '👥', label: 'Groups' },
+  { id: 'users',       icon: '🧑', label: 'Users' },
+  { id: 'customers',   icon: '🏢', label: 'Customers' },
+  { id: 'products',    icon: '📦', label: 'Products' },
+  { id: 'deployments', icon: '🚀', label: 'Deployments' },
+  { id: 'settings',    icon: '⚙️', label: 'Settings', adminOnly: true },
 ];
 
 export default function Sidebar({ current, onNav, onLogout }) {
@@ -40,10 +47,35 @@ export default function Sidebar({ current, onNav, onLogout }) {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">
-        <h2>{settings.company_name} Support</h2>
-        {settings.support_email && <span>{settings.support_email}</span>}
+      <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 12px' }}>
+        <img
+          src="/Helyx Logo.png"
+          alt="Helyx"
+          style={{ height: 36, width: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
       </div>
+
+      {/* Home / Ops Center */}
+      <div style={{ padding: '8px 0 4px' }}>
+        {HOME_NAV.map((item) => (
+          <button
+            key={item.id}
+            className={`sidebar-item ${current === item.id ? 'active' : ''}`}
+            onClick={() => onNav(item.id)}
+            style={{
+              fontWeight: 600,
+              color: current === item.id ? '#FFFFFF' : '#E2E8F0',
+              letterSpacing: '0.1px',
+            }}
+          >
+            <span>{item.icon}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ margin: '4px 12px', borderTop: '1px solid #334155' }} />
 
       <div className="sidebar-section">
         <div className="sidebar-section-label">Tickets</div>
@@ -115,9 +147,9 @@ export default function Sidebar({ current, onNav, onLogout }) {
       </div>
 
       <div style={{ padding: '12px 16px', borderTop: '1px solid #334155' }}>
-        <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>Signed in as</div>
-        <div style={{ fontSize: 13, color: '#F1F5F9', fontWeight: 600, marginBottom: 2 }}>{user?.name}</div>
-        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>{user?.email}</div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>Signed in as</div>
+        <div style={{ fontSize: 13, color: '#FFFFFF', fontWeight: 600, marginBottom: 2 }}>{user?.name}</div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>{user?.email}</div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className={`role-badge role-${user?.role}`}>{user?.role}</span>
           <button

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
+import { useProducts } from '../context/ProductsContext';
 
 // ── Type config ───────────────────────────────────────────────────────────────
 
@@ -68,11 +69,23 @@ function ToolbarBtn({ title, onClick, children }) {
 // ── Publish confirmation modal ────────────────────────────────────────────────
 // Shown when pressing "Publish" from the list row quick-action.
 
+function audienceLabel(products) {
+  const list = parseProducts(products);
+  if (!list.length) return 'all customers';
+  return list.join(' & ') + ' customers only';
+}
+
+function parseProducts(raw) {
+  if (Array.isArray(raw)) return raw;
+  try { return JSON.parse(raw || '[]'); } catch (_) { return []; }
+}
+
 function PublishConfirmModal({ announcement, onConfirm, onCancel }) {
   const [sendEmail, setSendEmail] = useState(true);
+  const audience = audienceLabel(announcement.products);
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <h2>Publish Announcement</h2>
           <button className="btn btn-ghost btn-sm" onClick={onCancel}>✕</button>
@@ -100,10 +113,10 @@ function PublishConfirmModal({ announcement, onConfirm, onCancel }) {
             />
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#1E40AF', marginBottom: 3 }}>
-                📧 Send email to all customers
+                📧 Send email blast
               </div>
               <div style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.5 }}>
-                An email blast will be sent to all customers in your system. Uncheck to publish silently without notifying anyone.
+                Email will be sent to <strong>{audience}</strong>. Uncheck to publish silently without notifying anyone.
               </div>
             </div>
           </label>
@@ -127,16 +140,20 @@ function PublishConfirmModal({ announcement, onConfirm, onCancel }) {
 
 function AnnouncementEditor({ initial, onSaved, onCancel }) {
   const toast = useToast();
+  const { products: ALL_PRODUCTS } = useProducts();
   const editorRef = useRef(null);
 
   const [title,     setTitle]     = useState(initial?.title  || '');
   const [type,      setType]      = useState(initial?.type   || 'general');
   const [pinned,    setPinned]    = useState(!!initial?.pinned);
   const [sendEmail, setSendEmail] = useState(true);
+  const [products,  setProducts]  = useState(() => parseProducts(initial?.products));
   const [saving,    setSaving]    = useState(null); // null | 'draft' | 'published'
 
   // Show email checkbox only when this is a new article or currently a draft
   const isDraftOrNew = !initial?.id || initial?.status === 'draft';
+
+  const audience = products.length === 0 ? 'all customers' : products.join(' & ') + ' customers only';
 
   useEffect(() => {
     if (editorRef.current && initial?.body) {
@@ -149,13 +166,19 @@ function AnnouncementEditor({ initial, onSaved, onCancel }) {
     document.execCommand(cmd, false, value);
   }
 
+  function toggleProduct(p) {
+    setProducts((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    );
+  }
+
   async function handleSave(status) {
     if (!title.trim()) { toast('Title is required', 'error'); return; }
     setSaving(status);
     try {
       const body = editorRef.current?.innerHTML || '';
       const payload = {
-        title: title.trim(), body, type, status, pinned,
+        title: title.trim(), body, type, status, pinned, products,
         send_email: status === 'published' && isDraftOrNew ? sendEmail : false,
       };
       const saved = initial?.id
@@ -165,7 +188,7 @@ function AnnouncementEditor({ initial, onSaved, onCancel }) {
       const blasted = status === 'published' && isDraftOrNew && sendEmail;
       toast(
         status === 'published'
-          ? blasted ? 'Published & email sent to customers!' : 'Published!'
+          ? blasted ? `Published & email sent to ${audience}!` : 'Published!'
           : 'Draft saved',
         'success'
       );
@@ -245,6 +268,48 @@ function AnnouncementEditor({ initial, onSaved, onCancel }) {
         </label>
       </div>
 
+      {/* Audience / product targeting */}
+      <div style={{ padding: '10px 20px', borderBottom: '1px solid #F3F4F6', background: '#FAFAFA', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', flexShrink: 0 }}>🎯 Audience</span>
+        {ALL_PRODUCTS.length === 0 ? (
+          <span style={{ fontSize: 12, color: '#9CA3AF' }}>No products configured — blast goes to all customers</span>
+        ) : (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* "All" pill */}
+            <button
+              onClick={() => setProducts([])}
+              style={{
+                padding: '4px 12px', fontSize: 12, fontWeight: 600, borderRadius: 20, cursor: 'pointer',
+                background: products.length === 0 ? '#1E293B' : '#F9FAFB',
+                color:      products.length === 0 ? '#fff'     : '#6B7280',
+                border:     products.length === 0 ? 'none'     : '1px solid #E5E7EB',
+              }}
+            >
+              All products
+            </button>
+            {ALL_PRODUCTS.map((p) => (
+              <button
+                key={p}
+                onClick={() => toggleProduct(p)}
+                style={{
+                  padding: '4px 12px', fontSize: 12, fontWeight: 600, borderRadius: 20, cursor: 'pointer',
+                  background: products.includes(p) ? '#EFF6FF' : '#F9FAFB',
+                  color:      products.includes(p) ? '#1D4ED8' : '#6B7280',
+                  border:     products.includes(p) ? '1px solid #BFDBFE' : '1px solid #E5E7EB',
+                }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
+        {products.length > 0 && (
+          <span style={{ fontSize: 11, color: '#6B7280', marginLeft: 4 }}>
+            → will notify <strong>{audience}</strong>
+          </span>
+        )}
+      </div>
+
       {/* Email blast option — only for drafts/new being published */}
       {isDraftOrNew && (
         <div style={{ padding: '10px 20px', borderBottom: '1px solid #F3F4F6', background: '#FAFAFA' }}>
@@ -264,7 +329,7 @@ function AnnouncementEditor({ initial, onSaved, onCancel }) {
               style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#2563EB' }}
             />
             <span style={{ fontSize: 13, fontWeight: 600, color: sendEmail ? '#1E40AF' : '#6B7280' }}>
-              📧 Send email to all customers when published
+              📧 Send email to {audience} when published
             </span>
             {!sendEmail && (
               <span style={{ fontSize: 12, color: '#9CA3AF' }}>(publish silently)</span>
@@ -428,6 +493,17 @@ export default function AnnouncementsPage() {
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                   <TypeBadge type={ann.type} />
                   <StatusDot status={ann.status} />
+                  {/* Audience badge */}
+                  {(() => {
+                    const prods = parseProducts(ann.products);
+                    return prods.length > 0 ? (
+                      <span style={{ fontSize: 11, fontWeight: 600, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 20, padding: '2px 8px' }}>
+                        🎯 {prods.join(', ')}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>All products</span>
+                    );
+                  })()}
                   <span style={{ fontSize: 11, color: '#9CA3AF' }}>
                     {ann.status === 'published' ? `Published ${fmtDate(ann.published_at)}` : `Updated ${fmtDate(ann.updated_at)}`}
                   </span>
@@ -482,8 +558,8 @@ export default function AnnouncementsPage() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h2>Delete Announcement</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(null)}>✕</button>

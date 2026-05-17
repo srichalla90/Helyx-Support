@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
-import { api, TICKET_TYPES, PRODUCTS, STATUSES, PRIORITIES } from '../api';
+import { api, TICKET_TYPES, STATUSES, PRIORITIES } from '../api';
+import { useProducts } from '../context/ProductsContext';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
 import { useUser } from '../context/UserContext';
@@ -91,8 +92,8 @@ function CustomerHistoryModal({ email, currentTicketId, onClose, onSelectTicket 
     api.getTicketsByEmail(email).then(setTickets).catch(() => {}).finally(() => setLoading(false));
   }, [email]);
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 600 }}>
         <div className="modal-header">
           <h2>Ticket History — {email}</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
@@ -150,7 +151,7 @@ function AttachmentList({ attachments, onDelete }) {
           <a
             href={api.ticketAttachmentDownloadUrl(att.id)}
             target="_blank" rel="noreferrer"
-            style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 500 }}
+            style={{ color: '#1E293B', textDecoration: 'none', fontWeight: 500 }}
           >
             {att.original_name || att.display_name}
           </a>
@@ -192,8 +193,8 @@ function CannedResponsePicker({ onSelect, onClose }) {
   }, {});
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 560 }}>
         <div className="modal-header">
           <h2>📋 Canned Responses</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
@@ -270,11 +271,13 @@ function SLABadge({ sla }) {
 
 // ── Tag Chips ─────────────────────────────────────────────────────────────────
 function TagsSection({ ticketId }) {
-  const [tags,     setTags]     = useState([]);
-  const [adding,   setAdding]   = useState(false);
-  const [newTag,   setNewTag]   = useState('');
-  const [saving,   setSaving]   = useState(false);
-  const inputRef = useRef(null);
+  const [tags,        setTags]        = useState([]);
+  const [definitions, setDefinitions] = useState([]);
+  const [adding,      setAdding]      = useState(false);
+  const [filter,      setFilter]      = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const inputRef  = useRef(null);
+  const dropRef   = useRef(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -283,21 +286,34 @@ function TagsSection({ ticketId }) {
   }, [ticketId]);
 
   useEffect(() => {
-    if (adding) inputRef.current?.focus();
+    api.getTagDefinitions().then(setDefinitions).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (adding) { setFilter(''); inputRef.current?.focus(); }
   }, [adding]);
 
-  async function addTag() {
-    const tag = newTag.trim().toLowerCase();
-    if (!tag) { setAdding(false); setNewTag(''); return; }
-    if (tags.includes(tag)) { setNewTag(''); return; }
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!adding) return;
+    function handler(e) {
+      if (dropRef.current && !dropRef.current.contains(e.target)) {
+        setAdding(false);
+        setFilter('');
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [adding]);
+
+  async function pickTag(name) {
+    if (tags.includes(name)) { setAdding(false); setFilter(''); return; }
     setSaving(true);
     try {
-      const updated = await api.addTicketTag(ticketId, tag);
+      const updated = await api.addTicketTag(ticketId, name);
       setTags(updated);
-      setNewTag('');
-      setAdding(false);
     } catch (e) { toast(e.message, 'error'); }
-    finally { setSaving(false); }
+    finally { setSaving(false); setAdding(false); setFilter(''); }
   }
 
   async function removeTag(tag) {
@@ -307,32 +323,93 @@ function TagsSection({ ticketId }) {
     } catch (e) { toast(e.message, 'error'); }
   }
 
+  // Build a lookup map for fast color retrieval
+  const defMap = Object.fromEntries(definitions.map((d) => [d.name, d]));
+
+  // Available tags = defined tags not already applied, filtered by search
+  const available = definitions.filter(
+    (d) => !tags.includes(d.name) && d.name.includes(filter.toLowerCase())
+  );
+
+  function tagStyle(name) {
+    const def = defMap[name];
+    if (def) return { background: def.bg, color: def.color, border: `1px solid ${def.bg}` };
+    return { background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' };
+  }
+
   return (
     <div>
       <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Tags</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         {tags.map((tag) => (
-          <span key={tag} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 500 }}>
+          <span key={tag} style={{ display: 'flex', alignItems: 'center', gap: 4, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 500, ...tagStyle(tag) }}>
             {tag}
-            <button onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93C5FD', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+            <button onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: 11, padding: 0, lineHeight: 1, color: 'inherit' }}>✕</button>
           </span>
         ))}
-        {adding ? (
-          <input
-            ref={inputRef}
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addTag(); if (e.key === 'Escape') { setAdding(false); setNewTag(''); } }}
-            onBlur={addTag}
-            disabled={saving}
-            placeholder="tag name…"
-            style={{ padding: '2px 8px', fontSize: 12, border: '1px solid #BFDBFE', borderRadius: 999, outline: 'none', width: 80, color: '#1D4ED8' }}
-          />
-        ) : (
-          <button onClick={() => setAdding(true)} style={{ background: 'none', border: '1px dashed #D1D5DB', borderRadius: 999, padding: '2px 10px', fontSize: 12, color: '#9CA3AF', cursor: 'pointer' }}>
+
+        {/* Dropdown trigger */}
+        <div ref={dropRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setAdding((v) => !v)}
+            style={{ background: 'none', border: '1px dashed #D1D5DB', borderRadius: 999, padding: '2px 10px', fontSize: 12, color: '#9CA3AF', cursor: 'pointer' }}
+          >
             + Add tag
           </button>
-        )}
+
+          {adding && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, marginTop: 4,
+              background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 200, minWidth: 180, maxWidth: 220,
+            }}>
+              {/* Search filter */}
+              <div style={{ padding: '8px 8px 4px' }}>
+                <input
+                  ref={inputRef}
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setAdding(false); setFilter(''); }
+                    if (e.key === 'Enter' && available.length === 1) pickTag(available[0].name);
+                  }}
+                  placeholder="Search tags…"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', fontSize: 12, border: '1px solid #E5E7EB', borderRadius: 6, outline: 'none', fontFamily: 'inherit' }}
+                />
+              </div>
+
+              <div style={{ maxHeight: 200, overflowY: 'auto', padding: '4px 0 6px' }}>
+                {available.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#9CA3AF', padding: '8px 12px', textAlign: 'center' }}>
+                    {definitions.length === 0 ? 'No tags defined yet' : 'No matching tags'}
+                  </div>
+                ) : (
+                  available.map((d) => (
+                    <button
+                      key={d.name}
+                      onMouseDown={(e) => { e.preventDefault(); pickTag(d.name); }}
+                      disabled={saving}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                    >
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: '#111827', fontWeight: 500 }}>{d.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {definitions.length === 0 && (
+                <div style={{ borderTop: '1px solid #E5E7EB', padding: '6px 12px' }}>
+                  <a href="/settings" style={{ fontSize: 11, color: '#6B7280', textDecoration: 'none' }}>
+                    Define tags in Settings →
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -368,6 +445,7 @@ function RichToolbar({ editorRef, onCannedResponse }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
+  const { products: PRODUCTS } = useProducts();
   const currentUser = useUser();
   const editorRef   = useRef(null);
 
@@ -401,6 +479,19 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
   const [mentionQuery,  setMentionQuery]  = useState('');
   const [showMention,   setShowMention]   = useState(false);
   const [mentionIdx,    setMentionIdx]    = useState(0);
+  const [mergeConfirm,  setMergeConfirm]  = useState(null);
+
+  // Azure DevOps
+  const [showAdoModal,   setShowAdoModal]   = useState(false);
+  const [adoConfig,      setAdoConfig]      = useState(null);   // { projects, workItemTypes }
+  const [adoProject,     setAdoProject]     = useState('');
+  const [adoWorkType,    setAdoWorkType]    = useState('Bug');
+  const [adoCreating,    setAdoCreating]    = useState(false);
+  const [adoResult,      setAdoResult]      = useState(null);   // { workItemId, workItemUrl }
+  const [adoError,       setAdoError]       = useState('');
+  const [adoLiveState,   setAdoLiveState]   = useState(null);   // { state, workItemType, title, project }
+  const [adoStateFetching, setAdoStateFetching] = useState(false);
+
   const fileInputRef      = useRef(null);
   const mentionAnchor     = useRef(null); // stores caret position when @ was typed
   const mentionDropdownRef = useRef(null); // ref to the dropdown DOM node
@@ -422,6 +513,12 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
     setSlaStatus(null);
     setCsatRating(null);
     setCustomFields({ definitions: [], values: {} });
+    setShowAdoModal(false);
+    setAdoResult(null);
+    setAdoError('');
+    setAdoLiveState(null);
+    setAdoStateFetching(false);
+    lastFetchedAdoId.current = null;
     if (editorRef.current) editorRef.current.innerHTML = '';
     Promise.all([
       api.getTicket(ticketId),
@@ -481,6 +578,40 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [showMention]);
 
+  // Fetch live ADO work item state — triggered by ticket load OR custom fields load.
+  // We look up the work item ID from two sources (in priority order):
+  //   1. ticket.ado_bug_id   — the direct column, populated by SELECT t.* in getTicket
+  //   2. customFields values — the custom_field_definitions + ticket_custom_fields table
+  // We store the resolved ID in a ref so both effects share the same dedupe check.
+  const lastFetchedAdoId = useRef(null);
+  function fetchAdoLiveState(workItemId) {
+    if (!workItemId) return;
+    const idStr = String(workItemId);
+    if (lastFetchedAdoId.current === idStr) return; // already fetched for this ID
+    lastFetchedAdoId.current = idStr;
+    setAdoStateFetching(true);
+    api.getDevOpsWorkItemState(idStr)
+      .then(setAdoLiveState)
+      .catch(() => setAdoLiveState(null))
+      .finally(() => setAdoStateFetching(false));
+  }
+
+  // Trigger 1: ticket data loads (covers page refresh — ticket.ado_bug_id is on SELECT t.*)
+  useEffect(() => {
+    if (ticket?.ado_bug_id) fetchAdoLiveState(ticket.ado_bug_id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.ado_bug_id]);
+
+  // Trigger 2: custom fields load (backup path and covers tickets without ado_bug_id column)
+  useEffect(() => {
+    const defs = customFields?.definitions || [];
+    // Prefer the .value already embedded in the definition object (server sets it)
+    const adoDef = defs.find((d) => d.name === 'ado_bug_id');
+    const workItemId = adoDef?.value || (customFields?.values || {})[adoDef?.id];
+    if (workItemId) fetchAdoLiveState(workItemId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customFields]);
+
   function setDetail(field, value) {
     setDetails((prev) => ({ ...prev, [field]: value }));
     setDirty(true);
@@ -510,6 +641,51 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
       toast(e.message, 'error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ── Azure DevOps ────────────────────────────────────────────────────────────
+  async function openAdoModal() {
+    setAdoError('');
+    setAdoResult(null);
+    setShowAdoModal(true);
+    try {
+      // Load config + auto-suggest in parallel
+      const [cfg, suggestion] = await Promise.all([
+        api.getDevOpsConfig(),
+        api.getDevOpsSuggestion(ticketId),
+      ]);
+      setAdoConfig(cfg);
+      // Pre-select project based on ticket's product field
+      const pre = suggestion.suggested || (cfg.projects?.[0]?.value ?? '');
+      setAdoProject(pre);
+      // Pre-select work item type based on ticket type
+      setAdoWorkType(suggestion.suggestedType || 'Bug');
+    } catch (e) {
+      setAdoError(e.message || 'Failed to load ADO configuration');
+    }
+  }
+
+  async function createAdoWorkItem() {
+    if (!adoProject || !adoWorkType) return;
+    setAdoCreating(true);
+    setAdoError('');
+    try {
+      const result = await api.createDevOpsWorkItem(ticketId, adoProject, adoWorkType);
+      setAdoResult(result);
+      toast(`${adoWorkType} #${result.workItemId} created in ${result.adoProject}`, 'success');
+      // Refresh custom fields (triggers the live-state useEffect via setCustomFields)
+      api.getTicketCustomFields(ticketId).then(setCustomFields).catch(() => {});
+      // Also eagerly fetch live state with the new work item ID
+      setAdoStateFetching(true);
+      api.getDevOpsWorkItemState(result.workItemId)
+        .then(setAdoLiveState)
+        .catch(() => setAdoLiveState(null))
+        .finally(() => setAdoStateFetching(false));
+    } catch (e) {
+      setAdoError(e.message || 'Failed to create Azure DevOps work item');
+    } finally {
+      setAdoCreating(false);
     }
   }
 
@@ -568,7 +744,7 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
     span.className = 'mention';
     span.setAttribute('data-user-id', agent.id);
     span.setAttribute('contenteditable', 'false');
-    span.style.cssText = 'color:#2563EB;background:#EFF6FF;border-radius:4px;padding:1px 4px;font-weight:600;cursor:default;';
+    span.style.cssText = 'color:#1E293B;background:#EFF6FF;border-radius:4px;padding:1px 4px;font-weight:600;cursor:default;';
     span.textContent = `@${agent.name}`;
     const afterSpace = document.createTextNode(' '); // non-breaking space after mention
     const newSel = window.getSelection();
@@ -647,7 +823,12 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
 
   async function executeMerge() {
     if (!mergeTarget) return;
-    if (!window.confirm(`Merge ticket #${mergeTarget.id} ("${mergeTarget.title}") into this ticket? The merged ticket will be closed.`)) return;
+    setMergeConfirm({ sourceId: mergeTarget.id, targetId: ticketId });
+    return;
+  }
+
+  async function doMerge() {
+    setMergeConfirm(null);
     setMerging(true);
     try {
       const updated = await api.mergeTicket(ticketId, mergeTarget.id);
@@ -747,6 +928,164 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
 
   return (
     <div>
+      {mergeConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Merge Ticket?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>
+              Ticket #{mergeConfirm.sourceId} will be merged into #{mergeConfirm.targetId}. The source ticket will be closed and its comments will be moved. This cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setMergeConfirm(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doMerge} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Merge</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Azure DevOps Modal ──────────────────────────────────────────────── */}
+      {showAdoModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', width: 460, boxShadow: '0 16px 48px rgba(0,0,0,0.2)' }}>
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+                  <path d="M29.982 10.302 24.01 2l-12.04 5.378H2.986L0 12.666l16.48 9.956V28l5.822-7.344 7.68 4.626V10.302zM5.34 12.276l5.476-2.844h7.964l-11.44 6.476zm19.316 9.49-5.156-3.104 5.156-9.858v12.962z" fill="#0078D4"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Create Azure DevOps Work Item</div>
+                  <div style={{ fontSize: 12, color: '#6B7280' }}>Ticket #{ticketId} — {ticket?.title}</div>
+                </div>
+              </div>
+              <button onClick={() => setShowAdoModal(false)} style={{ background: 'none', border: 'none', fontSize: 20, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>✕</button>
+            </div>
+
+            {/* Success state */}
+            {adoResult ? (
+              <div>
+                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#166534', marginBottom: 6 }}>✓ Work item created successfully</div>
+                  <div style={{ fontSize: 13, color: '#374151' }}>
+                    <strong>{adoResult.workItemType} #{adoResult.workItemId}</strong> in <strong>{adoResult.adoProject}</strong>
+                  </div>
+                </div>
+                <a
+                  href={adoResult.workItemUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', padding: '10px 0', fontSize: 14, fontWeight: 600, background: '#0078D4', color: '#fff', borderRadius: 8, textDecoration: 'none', marginBottom: 10 }}
+                >
+                  Open in Azure DevOps ↗
+                </a>
+                <button
+                  onClick={() => setShowAdoModal(false)}
+                  style={{ width: '100%', padding: '9px 0', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, cursor: 'pointer' }}
+                >
+                  Close
+                </button>
+              </div>
+            ) : !adoConfig ? (
+              /* Loading */
+              <div style={{ textAlign: 'center', padding: '32px 0', color: '#9CA3AF' }}>
+                {adoError
+                  ? <div style={{ color: '#DC2626', fontSize: 13 }}>{adoError}</div>
+                  : <><div className="spinner" style={{ margin: '0 auto 10px' }} /><div style={{ fontSize: 13 }}>Loading configuration…</div></>
+                }
+              </div>
+            ) : (
+              /* Form */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+                {/* Ticket preview */}
+                <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Will create as</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>[Helyx #{ticketId}] {ticket?.title}</div>
+                  {ticket?.product && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>Product: {ticket.product}</div>}
+                </div>
+
+                {/* Project selector */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    ADO Project
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {adoConfig.projects.map((p) => (
+                      <button
+                        key={p.value}
+                        onClick={() => setAdoProject(p.value)}
+                        style={{
+                          flex: 1, padding: '10px 8px', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                          border: adoProject === p.value ? '2px solid #0078D4' : '2px solid #E5E7EB',
+                          background: adoProject === p.value ? '#EFF6FF' : '#fff',
+                          color: adoProject === p.value ? '#0078D4' : '#6B7280',
+                          textAlign: 'center',
+                        }}
+                      >
+                        {p.label}
+                        <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2, color: adoProject === p.value ? '#0369A1' : '#9CA3AF' }}>{p.value}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Work item type */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Work Item Type
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {adoConfig.workItemTypes.map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setAdoWorkType(t)}
+                        style={{
+                          flex: 1, padding: '10px 8px', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                          border: adoWorkType === t ? '2px solid #1E293B' : '2px solid #E5E7EB',
+                          background: adoWorkType === t ? '#F0F9FF' : '#fff',
+                          color: adoWorkType === t ? '#1E293B' : '#6B7280',
+                        }}
+                      >
+                        {t === 'Bug' ? '🐞' : '✅'} {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Error */}
+                {adoError && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#B91C1C' }}>
+                    {adoError}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    onClick={() => setShowAdoModal(false)}
+                    style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={createAdoWorkItem}
+                    disabled={adoCreating || !adoProject || !adoWorkType}
+                    style={{
+                      flex: 2, padding: '10px 0', fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: adoCreating ? 'not-allowed' : 'pointer', border: 'none',
+                      background: adoCreating || !adoProject ? '#94A3B8' : '#0078D4',
+                      color: '#fff',
+                    }}
+                  >
+                    {adoCreating ? 'Creating…' : `Create ${adoWorkType} in ${adoProject || '…'}`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <button className="back-btn" onClick={onBack}>← Back to tickets</button>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -793,12 +1132,6 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
               {ticket.description || <em style={{ color: '#9CA3AF' }}>No description provided.</em>}
             </div>
             <AttachmentList attachments={ticket.attachments} onDelete={deleteAttachment} />
-          </div>
-
-          {/* Activity log */}
-          <div className="detail-card">
-            <h3>Activity</h3>
-            <ActivityFeed ticketId={ticketId} refreshKey={activityKey} />
           </div>
 
           {/* Comments */}
@@ -988,10 +1321,73 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
               </div>
             </div>
           </div>
+
+          {/* Activity log — below conversation */}
+          <div className="detail-card">
+            <h3>Activity</h3>
+            <ActivityFeed ticketId={ticketId} refreshKey={activityKey} />
+          </div>
         </div>
 
         {/* ── Sidebar ──────────────────────────────────────────────────────── */}
         <div className="ticket-detail-sidebar">
+
+          {/* Requester — shown first for quick context */}
+          <div className="detail-card">
+            <h3>Requester</h3>
+            {ticket.requester_email ? (
+              <div>
+                <div style={{ fontSize: 13, color: '#374151', wordBreak: 'break-all' }}>
+                  {ticket.requester_email}
+                </div>
+                <button
+                  onClick={() => setShowHistory(true)}
+                  style={{ marginTop: 8, fontSize: 12, color: '#1E293B', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, display: 'block' }}
+                >
+                  📋 View all tickets from this customer
+                </button>
+
+                {/* CSAT */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #F3F4F6' }}>
+                  <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>CSAT Survey</div>
+                  {csatRating?.submitted_at ? (
+                    <div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {[1,2,3,4,5].map((n) => (
+                          <span key={n} style={{ fontSize: 18, color: n <= csatRating.rating ? '#F59E0B' : '#E5E7EB' }}>★</span>
+                        ))}
+                        <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 4 }}>{csatRating.rating}/5</span>
+                      </div>
+                      {csatRating.comment && <p style={{ fontSize: 12, color: '#374151', marginTop: 4, fontStyle: 'italic' }}>"{csatRating.comment}"</p>}
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>Submitted {fmtDate(csatRating.submitted_at)}</div>
+                    </div>
+                  ) : csatRating?.sent_at ? (
+                    <div style={{ fontSize: 12, color: '#6B7280' }}>
+                      Survey sent {fmtDate(csatRating.sent_at)} — awaiting response
+                    </div>
+                  ) : (
+                    <button
+                      onClick={sendCsatSurvey}
+                      disabled={sendingCsat || !isResolved}
+                      title={!isResolved ? 'Resolve the ticket first to send a CSAT survey' : 'Send satisfaction survey to customer'}
+                      style={{
+                        padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                        background: isResolved ? '#F0FDF4' : '#F9FAFB',
+                        color: isResolved ? '#166534' : '#9CA3AF',
+                        border: `1px solid ${isResolved ? '#BBF7D0' : '#E5E7EB'}`,
+                        borderRadius: 7, cursor: isResolved ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      {sendingCsat ? 'Sending…' : '⭐ Send CSAT Survey'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <em style={{ color: '#9CA3AF', fontSize: 13 }}>Unknown</em>
+            )}
+          </div>
+
           <div className="detail-card">
             <h3>Details</h3>
             <div className="meta-row">
@@ -1077,7 +1473,7 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
                 disabled={savingCustom || !customDirty}
                 style={{
                   marginTop: 12, width: '100%', padding: '8px 0', fontSize: 13, fontWeight: 700,
-                  background: customDirty ? '#2563EB' : '#F3F4F6',
+                  background: customDirty ? '#1E293B' : '#F3F4F6',
                   color: customDirty ? '#fff' : '#9CA3AF',
                   border: 'none', borderRadius: 7,
                   cursor: savingCustom || !customDirty ? 'not-allowed' : 'pointer',
@@ -1092,6 +1488,103 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
           <div className="detail-card">
             <TagsSection ticketId={ticketId} />
           </div>
+
+          {/* Azure DevOps */}
+          {(() => {
+            // Resolve the saved work item ID — check ticket column first (fastest,
+            // persists across refresh), then fall back to custom fields table.
+            const adoDef      = (customFields?.definitions || []).find((d) => d.name === 'ado_bug_id');
+            const cfValue     = adoDef?.value || (customFields?.values || {})[adoDef?.id];
+            const savedId     = ticket?.ado_bug_id || cfValue || null;
+            // Resolve display data: live state > just-created session result > persisted ticket columns
+            const linkedId      = adoLiveState?.workItemId  || (adoResult ? String(adoResult.workItemId) : null) || savedId;
+            const linkedUrl     = adoLiveState?.workItemUrl  || adoResult?.workItemUrl  || ticket?.ado_work_item_url  || null;
+            const linkedType    = adoLiveState?.workItemType || adoResult?.workItemType  || ticket?.ado_work_item_type || null;
+            const linkedProject = adoLiveState?.project      || adoResult?.adoProject   || null;
+            const isLinked = Boolean(linkedId);
+
+            // State badge colour map
+            const STATE_STYLES = {
+              'New':         { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6' },
+              'Active':      { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6' },
+              'In Progress': { bg: '#FFF7ED', color: '#C2410C', dot: '#F97316' },
+              'Resolved':    { bg: '#F0FDF4', color: '#166534', dot: '#22C55E' },
+              'Closed':      { bg: '#F9FAFB', color: '#6B7280', dot: '#9CA3AF' },
+              'Done':        { bg: '#F0FDF4', color: '#166534', dot: '#22C55E' },
+              'Removed':     { bg: '#FEF2F2', color: '#991B1B', dot: '#EF4444' },
+            };
+            const stateStyle = adoLiveState?.state ? (STATE_STYLES[adoLiveState.state] || { bg: '#F3F4F6', color: '#374151', dot: '#9CA3AF' }) : null;
+
+            return (
+              <div className="detail-card">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <svg width="16" height="16" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
+                    <path d="M29.982 10.302 24.01 2l-12.04 5.378H2.986L0 12.666l16.48 9.956V28l5.822-7.344 7.68 4.626V10.302zM5.34 12.276l5.476-2.844h7.964l-11.44 6.476zm19.316 9.49-5.156-3.104 5.156-9.858v12.962z" fill="#0078D4"/>
+                  </svg>
+                  Azure DevOps
+                </h3>
+
+                {isLinked ? (
+                  <div>
+                    {/* Work item link */}
+                    {linkedUrl ? (
+                      <a
+                        href={linkedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#1E293B', textDecoration: 'none', padding: '7px 10px', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 7 }}
+                      >
+                        <span style={{ fontSize: 16 }}>{linkedType === 'Bug' ? '🐞' : linkedType === 'Task' ? '✅' : '🔗'}</span>
+                        {linkedType || 'Work Item'} #{linkedId}
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#0369A1' }}>↗ Open</span>
+                      </a>
+                    ) : (
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1E293B', padding: '7px 10px', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 7 }}>
+                        <span style={{ fontSize: 16 }}>{linkedType === 'Bug' ? '🐞' : linkedType === 'Task' ? '✅' : '🔗'}</span>
+                        {' '}{linkedType || 'Work Item'} #{linkedId}
+                      </div>
+                    )}
+
+                    {/* Project label */}
+                    {linkedProject && (
+                      <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>{linkedProject}</div>
+                    )}
+
+                    {/* Live state badge */}
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</span>
+                      {adoStateFetching ? (
+                        <span style={{ fontSize: 11, color: '#9CA3AF' }}>fetching…</span>
+                      ) : adoLiveState?.state ? (
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                          background: stateStyle.bg, color: stateStyle.color,
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                        }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: stateStyle.dot, display: 'inline-block' }} />
+                          {adoLiveState.state}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11, color: '#9CA3AF' }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={openAdoModal}
+                    style={{
+                      width: '100%', padding: '8px 12px', fontSize: 13, fontWeight: 600,
+                      background: '#F8FAFF', color: '#1E293B',
+                      border: '1px solid #C7D2FE', borderRadius: 8, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 15 }}>+</span> Create Work Item
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* SLA Details */}
           {slaStatus?.policy && (
@@ -1118,76 +1611,6 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
             </div>
           )}
 
-          {/* Requester */}
-          <div className="detail-card">
-            <h3>Requester</h3>
-            {ticket.requester_email ? (
-              <div>
-                <div style={{ fontSize: 13, color: '#374151', wordBreak: 'break-all' }}>
-                  {ticket.requester_email}
-                </div>
-                <button
-                  onClick={() => setShowHistory(true)}
-                  style={{ marginTop: 8, fontSize: 12, color: '#2563EB', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, display: 'block' }}
-                >
-                  📋 View all tickets from this customer
-                </button>
-
-                {/* CSAT */}
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #F3F4F6' }}>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>CSAT Survey</div>
-                  {csatRating?.submitted_at ? (
-                    <div>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        {[1,2,3,4,5].map((n) => (
-                          <span key={n} style={{ fontSize: 18, color: n <= csatRating.rating ? '#F59E0B' : '#E5E7EB' }}>★</span>
-                        ))}
-                        <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 4 }}>{csatRating.rating}/5</span>
-                      </div>
-                      {csatRating.comment && <p style={{ fontSize: 12, color: '#374151', marginTop: 4, fontStyle: 'italic' }}>"{csatRating.comment}"</p>}
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>Submitted {fmtDate(csatRating.submitted_at)}</div>
-                    </div>
-                  ) : csatRating?.sent_at ? (
-                    <div style={{ fontSize: 12, color: '#6B7280' }}>
-                      Survey sent {fmtDate(csatRating.sent_at)} — awaiting response
-                    </div>
-                  ) : (
-                    <button
-                      onClick={sendCsatSurvey}
-                      disabled={sendingCsat || !isResolved}
-                      title={!isResolved ? 'Resolve the ticket first to send a CSAT survey' : 'Send satisfaction survey to customer'}
-                      style={{
-                        padding: '5px 12px', fontSize: 12, fontWeight: 600,
-                        background: isResolved ? '#F0FDF4' : '#F9FAFB',
-                        color: isResolved ? '#166534' : '#9CA3AF',
-                        border: `1px solid ${isResolved ? '#BBF7D0' : '#E5E7EB'}`,
-                        borderRadius: 7, cursor: isResolved ? 'pointer' : 'not-allowed',
-                      }}
-                    >
-                      {sendingCsat ? 'Sending…' : '⭐ Send CSAT Survey'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <em style={{ color: '#9CA3AF', fontSize: 13 }}>Unknown</em>
-            )}
-          </div>
-
-          {/* Timeline */}
-          <div className="detail-card">
-            <h3>Timeline</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div>
-                <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Created</div>
-                <div style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>{fmtDateTime(ticket.created_at)}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Last Updated</div>
-                <div style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>{fmtDateTime(ticket.updated_at)}</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1211,8 +1634,8 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
 
       {/* Merge Ticket Modal */}
       {showMerge && (
-        <div className="modal-overlay" onClick={() => { setShowMerge(false); setMergeTarget(null); setMergeSearch(''); setMergeResults([]); }}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
               <h2>🔀 Merge Ticket</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => { setShowMerge(false); setMergeTarget(null); setMergeSearch(''); setMergeResults([]); }}>✕</button>
@@ -1276,8 +1699,8 @@ export default function TicketDetail({ ticketId, onBack, onSelectTicket }) {
 
       {/* Delete confirm */}
       {showDelete && (
-        <div className="modal-overlay" onClick={() => setShowDelete(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal">
             <div className="modal-header">
               <h2>Delete Ticket?</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowDelete(false)}>✕</button>

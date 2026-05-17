@@ -15,7 +15,13 @@
 
 const jwt = require('jsonwebtoken');
 
-const SECRET = process.env.JWT_SECRET || 'dev-secret-NOT-for-production';
+// Warn loudly in non-production if secret is missing so devs know immediately
+const SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[requireAuth] WARNING: JWT_SECRET not set — using insecure dev fallback. Never use this in production.');
+  }
+  return 'dev-secret-NOT-for-production';
+})();
 
 module.exports = function requireAuth(req, res, next) {
   const header = req.headers['authorization'];

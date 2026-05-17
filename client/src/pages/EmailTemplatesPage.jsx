@@ -150,7 +150,7 @@ export default function EmailTemplatesPage() {
               <button
                 onClick={() => save(active)}
                 disabled={saving}
-                style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#93C5FD' : '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#64748B' : '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}
               >
                 {saving ? 'Saving…' : 'Save Template'}
               </button>

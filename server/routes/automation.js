@@ -156,27 +156,45 @@ router.patch('/:id/toggle', adminOnly, (req, res) => {
 
 function evaluateCondition(condition, ticket) {
   const { field, operator, value } = condition;
-
-  // Resolve ticket field value
   let ticketValue = ticket[field];
-  if (ticketValue === null || ticketValue === undefined) {
-    ticketValue = '';
-  }
+  if (ticketValue === null || ticketValue === undefined) ticketValue = '';
   const ticketStr = String(ticketValue);
   const valueStr  = String(value || '');
-
   switch (operator) {
-    case 'is':
-      return ticketStr.toLowerCase() === valueStr.toLowerCase();
-    case 'is_not':
-      return ticketStr.toLowerCase() !== valueStr.toLowerCase();
-    case 'contains':
-      return ticketStr.toLowerCase().includes(valueStr.toLowerCase());
-    case 'not_contains':
-      return !ticketStr.toLowerCase().includes(valueStr.toLowerCase());
-    default:
-      return false;
+    case 'is':           return ticketStr.toLowerCase() === valueStr.toLowerCase();
+    case 'is_not':       return ticketStr.toLowerCase() !== valueStr.toLowerCase();
+    case 'contains':     return ticketStr.toLowerCase().includes(valueStr.toLowerCase());
+    case 'not_contains': return !ticketStr.toLowerCase().includes(valueStr.toLowerCase());
+    default:             return false;
   }
+}
+
+function executeAction(action, ticketId, now) {
+  const { type, value } = action;
+  switch (type) {
+    case 'set_priority':
+      db.prepare('UPDATE tickets SET priority = ?, updated_at = ? WHERE id = ?').run(value, now, ticketId);
+      break;
+    case 'set_status':
+      db.prepare('UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?').run(value, now, ticketId);
+      break;
+    case 'set_group':
+      db.prepare('UPDATE tickets SET group_id = ?, updated_at = ? WHERE id = ?').run(parseInt(value, 10), now, ticketId);
+      break;
+    case 'set_assignee':
+      db.prepare('UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?').run(parseInt(value, 10), now, ticketId);
+      break;
+    case 'add_tag':
+      db.prepare('INSERT OR IGNORE INTO ticket_tags (ticket_id, tag) VALUES (?, ?)').run(ticketId, value);
+      break;
+    default:
+      console.warn(`executeAction: unknown action type "${type}"`);
+      return;
+  }
+  db.prepare(
+    `INSERT INTO ticket_activity (ticket_id, actor, action, field, old_value, new_value, created_at)
+     VALUES (?, 'automation', 'automation_rule', ?, NULL, ?, ?)`
+  ).run(ticketId, type, value, now);
 }
 
 function applyAutomationRules(ticket, event) {
@@ -188,76 +206,31 @@ function applyAutomationRules(ticket, event) {
     for (const rule of rules) {
       let conditions = [];
       let actions    = [];
+      try { conditions = JSON.parse(rule.conditions || '[]'); } catch (_) {}
+      try { actions    = JSON.parse(rule.actions    || '[]'); } catch (_) {}
 
-      try {
-        conditions = JSON.parse(rule.conditions || '[]');
-      } catch (_) {
-        conditions = [];
-      }
-      try {
-        actions = JSON.parse(rule.actions || '[]');
-      } catch (_) {
-        actions = [];
-      }
-
-      // Evaluate ALL conditions (AND logic)
       const allPass = conditions.every((cond) => evaluateCondition(cond, ticket));
       if (!allPass) continue;
 
-      // Apply actions
       const now = new Date().toISOString();
       for (const action of actions) {
-        const { type, value } = action;
-
-        try {
-          switch (type) {
-            case 'set_priority':
-              db.prepare(
-                'UPDATE tickets SET priority = ?, updated_at = ? WHERE id = ?'
-              ).run(value, now, ticket.id);
-              break;
-
-            case 'set_status':
-              db.prepare(
-                'UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?'
-              ).run(value, now, ticket.id);
-              break;
-
-            case 'set_group':
-              db.prepare(
-                'UPDATE tickets SET group_id = ?, updated_at = ? WHERE id = ?'
-              ).run(parseInt(value, 10), now, ticket.id);
-              break;
-
-            case 'set_assignee':
-              db.prepare(
-                'UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?'
-              ).run(parseInt(value, 10), now, ticket.id);
-              break;
-
-            case 'add_tag':
-              db.prepare(
-                'INSERT OR IGNORE INTO ticket_tags (ticket_id, tag) VALUES (?, ?)'
-              ).run(ticket.id, value);
-              break;
-
-            default:
-              console.warn(`applyAutomationRules: unknown action type "${type}"`);
-              continue;
-          }
-
-          // Log to ticket_activity
+        const delayHours = Number(action.delay_hours) || 0;
+        if (delayHours > 0) {
+          // Queue for later execution
+          const dueAt = new Date(Date.now() + delayHours * 3600 * 1000).toISOString();
           db.prepare(
-            `INSERT INTO ticket_activity (ticket_id, actor, action, field, old_value, new_value, created_at)
-             VALUES (?, 'automation', 'automation_rule', ?, NULL, ?, ?)`
-          ).run(ticket.id, type, value, now);
-        } catch (actionErr) {
-          console.error(`applyAutomationRules: error applying action "${type}" on ticket ${ticket.id}:`, actionErr);
+            `INSERT INTO pending_automations (ticket_id, rule_id, rule_name, action_type, action_value, due_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          ).run(ticket.id, rule.id, rule.name, action.type, action.value || '', dueAt, now);
+        } else {
+          // Execute immediately
+          try { executeAction(action, ticket.id, now); } catch (e) {
+            console.error(`applyAutomationRules: action "${action.type}" on ticket ${ticket.id}:`, e);
+          }
         }
       }
     }
 
-    // Return the updated ticket
     const updated = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticket.id);
     return updated || ticket;
   } catch (err) {
@@ -265,6 +238,38 @@ function applyAutomationRules(ticket, event) {
     return ticket;
   }
 }
+
+// ── Background job: process delayed actions ───────────────────────────────────
+function processPendingAutomations() {
+  try {
+    const now     = new Date().toISOString();
+    const pending = db.prepare(`SELECT * FROM pending_automations WHERE due_at <= ?`).all(now);
+    for (const pa of pending) {
+      try {
+        executeAction({ type: pa.action_type, value: pa.action_value }, pa.ticket_id, now);
+        db.prepare('DELETE FROM pending_automations WHERE id = ?').run(pa.id);
+        console.log(`[automation] Executed delayed action "${pa.action_type}" on ticket #${pa.ticket_id} (rule: "${pa.rule_name}")`);
+      } catch (e) {
+        console.error(`[automation] Error processing pending action id=${pa.id}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[automation] processPendingAutomations error:', e.message);
+  }
+}
+
+// Run every 2 minutes
+setInterval(processPendingAutomations, 2 * 60 * 1000);
+
+// GET /api/automation/pending — list pending (delayed) actions
+router.get('/pending', adminOnly, (req, res) => {
+  try {
+    const rows = db.prepare(`SELECT * FROM pending_automations ORDER BY due_at ASC`).all();
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 module.exports = router;
 module.exports.applyAutomationRules = applyAutomationRules;

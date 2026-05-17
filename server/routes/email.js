@@ -40,13 +40,15 @@ router.post('/ingest', (req, res) => {
 
   const { from, subject, text, html } = req.body;
 
-  const title       = (subject || 'No Subject').trim();
-  const description = (text || (html ? stripHtml(html) : '') || '').trim() || null;
-  const requester   = (from || '').trim() || null;
-
-  if (!title && !description) {
+  // Reject if both subject and body are missing/empty
+  const rawSubject = (subject || '').trim();
+  const rawBody = (text || (html ? stripHtml(html) : '') || '').trim();
+  if (!rawSubject && !rawBody) {
     return res.status(400).json({ error: 'Email has no subject or body' });
   }
+  const title = rawSubject || 'No Subject';
+  const description = rawBody || null;
+  const requester   = (from || '').trim() || null;
 
   try {
     const ts = new Date().toISOString();

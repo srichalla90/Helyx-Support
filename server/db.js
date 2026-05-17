@@ -71,8 +71,13 @@ function interpolate(sql, params) {
   return sql.replace(/\?/g, () => {
     const v = params[i++];
     if (v === null || v === undefined) return 'NULL';
-    if (typeof v === 'number')         return String(v);
+    if (typeof v === 'number')         return Number.isFinite(v) ? String(v) : 'NULL';
     if (typeof v === 'boolean')        return v ? '1' : '0';
+    // Guard against accidental object/array being passed as a bind param (M2)
+    if (typeof v === 'object') {
+      console.error('[db] interpolate: object passed as SQL param — converting to JSON string. This is likely a bug.', v);
+      return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
+    }
     // Escape single quotes in strings
     return `'${String(v).replace(/'/g, "''")}'`;
   });
@@ -195,6 +200,7 @@ READY.then(() => {
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       title           TEXT    NOT NULL,
       description     TEXT    NOT NULL DEFAULT '',
+      product         TEXT    NOT NULL DEFAULT '',
       status          TEXT    NOT NULL DEFAULT 'submitted',
       submitter_email TEXT    NOT NULL,
       submitter_name  TEXT    NOT NULL DEFAULT 'Community Member',
@@ -273,6 +279,14 @@ READY.then(() => {
       ticket_id INTEGER NOT NULL,
       tag       TEXT    NOT NULL,
       PRIMARY KEY (ticket_id, tag)
+    );
+
+    CREATE TABLE IF NOT EXISTS tag_definitions (
+      name        TEXT PRIMARY KEY,
+      color       TEXT NOT NULL DEFAULT '#1D4ED8',
+      bg          TEXT NOT NULL DEFAULT '#EFF6FF',
+      description TEXT NOT NULL DEFAULT '',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS canned_responses (
@@ -375,6 +389,33 @@ READY.then(() => {
       updated_at    TEXT    NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS deployments (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id    TEXT    NOT NULL DEFAULT '',
+      product_name  TEXT    NOT NULL DEFAULT '',
+      customer_id   INTEGER,
+      environment   TEXT    NOT NULL DEFAULT 'Production',
+      version       TEXT    NOT NULL DEFAULT '',
+      status        TEXT    NOT NULL DEFAULT 'Planned',
+      assigned_to   INTEGER,
+      deployed_at   TEXT,
+      notes         TEXT    NOT NULL DEFAULT '',
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS deployment_attachments (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      deployment_id INTEGER NOT NULL,
+      display_name  TEXT    NOT NULL,
+      filename      TEXT    NOT NULL,
+      original_name TEXT    NOT NULL,
+      mimetype      TEXT,
+      size          INTEGER,
+      uploaded_by   TEXT,
+      created_at    TEXT    NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS downloads (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       title         TEXT    NOT NULL,
@@ -391,6 +432,16 @@ READY.then(() => {
       position      INTEGER NOT NULL DEFAULT 0,
       created_at    TEXT    NOT NULL,
       updated_at    TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_reports (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT    NOT NULL,
+      filters    TEXT    NOT NULL DEFAULT '{}',
+      columns    TEXT    NOT NULL DEFAULT '[]',
+      created_by TEXT    NOT NULL DEFAULT '',
+      created_at TEXT    NOT NULL,
+      updated_at TEXT    NOT NULL
     );
   `);
 
@@ -425,6 +476,12 @@ READY.then(() => {
   try { _db.run(`ALTER TABLE tickets ADD COLUMN deviation_id TEXT`); } catch (e) {
     if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
   }
+  try { _db.run(`ALTER TABLE tickets ADD COLUMN ado_work_item_url TEXT`); } catch (e) {
+    if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
+  }
+  try { _db.run(`ALTER TABLE tickets ADD COLUMN ado_work_item_type TEXT`); } catch (e) {
+    if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
+  }
   // Add status column to kb_articles (migration)
   try { _db.run(`ALTER TABLE kb_articles ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'`); } catch (e) {
     if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
@@ -447,6 +504,49 @@ READY.then(() => {
     if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
   }
 
+  // Rich customer fields (lifecycle, contacts, etc.)
+  const customerMigrations = [
+    `ALTER TABLE customers ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'Potential'`,
+    `ALTER TABLE customers ADD COLUMN contacts         TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE customers ADD COLUMN industry         TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE customers ADD COLUMN website          TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE customers ADD COLUMN phone            TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE customers ADD COLUMN country          TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE customers ADD COLUMN account_manager  TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE customers ADD COLUMN notes            TEXT NOT NULL DEFAULT ''`,
+  ];
+  for (const sql of customerMigrations) {
+    try { _db.run(sql); } catch (e) {
+      if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
+    }
+  }
+
+  // feature_requests.product column
+  try { _db.run(`ALTER TABLE feature_requests ADD COLUMN product TEXT NOT NULL DEFAULT ''`); } catch (e) {
+    if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
+  }
+
+  // announcements.products — JSON array of product names for audience targeting ([] = all products)
+  try { _db.run(`ALTER TABLE announcements ADD COLUMN products TEXT NOT NULL DEFAULT '[]'`); } catch (e) {
+    if (!e.message?.includes('duplicate column name')) console.warn('Migration note:', e.message);
+  }
+
+  // Pending (delayed) automation actions
+  try {
+    _db.run(`
+      CREATE TABLE IF NOT EXISTS pending_automations (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id    INTEGER NOT NULL,
+        rule_id      INTEGER,
+        rule_name    TEXT    NOT NULL DEFAULT '',
+        action_type  TEXT    NOT NULL,
+        action_value TEXT    NOT NULL DEFAULT '',
+        due_at       TEXT    NOT NULL,
+        created_at   TEXT    NOT NULL
+      )
+    `);
+  } catch (e) { console.warn('pending_automations table note:', e.message); }
+
   // ── Indexes ───────────────────────────────────────────────────────────────────
   const INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_ticket_comments_ticket_id    ON ticket_comments(ticket_id)',
@@ -460,6 +560,9 @@ READY.then(() => {
     'CREATE INDEX IF NOT EXISTS idx_tickets_group_id             ON tickets(group_id)',
     'CREATE INDEX IF NOT EXISTS idx_kb_articles_folder_id        ON kb_articles(folder_id)',
     'CREATE INDEX IF NOT EXISTS idx_kb_files_folder_id           ON kb_files(folder_id)',
+    'CREATE INDEX IF NOT EXISTS idx_deployments_product_id       ON deployments(product_id)',
+    'CREATE INDEX IF NOT EXISTS idx_deployments_customer_id      ON deployments(customer_id)',
+    'CREATE INDEX IF NOT EXISTS idx_deployment_attachments_dep_id ON deployment_attachments(deployment_id)',
   ];
   for (const idx of INDEXES) { try { _db.run(idx); } catch (_) {} }
 
@@ -514,6 +617,7 @@ READY.then(() => {
     ['portal_url',                     process.env.WEBHOOK_BASE_URL || ''],
     ['announce_notify_customers',      '1'],
     ['announce_notify_agents',         '0'],
+    ['products',                       '[]'],
   ];
   for (const [key, value] of defaultSettings) {
     _db.run(`INSERT OR IGNORE INTO settings (key, value) VALUES ('${key}', '${value.replace(/'/g, "''")}')`);

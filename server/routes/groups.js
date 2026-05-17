@@ -59,10 +59,15 @@ router.patch('/:id/status', adminOnly, (req, res) => {
   const { active } = req.body;
   if (active === undefined) return res.status(400).json({ error: 'active is required' });
   const val = active ? 1 : 0;
-  const info = db.prepare(`UPDATE "groups" SET active = ? WHERE id = ?`).run(val, Number(req.params.id));
-  if (info.changes === 0) return res.status(404).json({ error: 'Group not found' });
-  const group = db.prepare(`SELECT * FROM "groups" WHERE id = ?`).get(Number(req.params.id));
-  res.json(group);
+  try {
+    const info = db.prepare(`UPDATE "groups" SET active = ? WHERE id = ?`).run(val, Number(req.params.id));
+    if (info.changes === 0) return res.status(404).json({ error: 'Group not found' });
+    const group = db.prepare(`SELECT * FROM "groups" WHERE id = ?`).get(Number(req.params.id));
+    res.json(group);
+  } catch (e) {
+    console.error('Error:', e);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Delete group — admin only

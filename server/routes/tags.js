@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router({ mergeParams: true });
 const db      = require('../db');
-const handleError   = require('../middleware/handleError');
+const handleError = require('../middleware/handleError');
+const staffOnly   = require('../middleware/staffOnly');
 
 function getTags(ticketId) {
   return db.prepare('SELECT tag FROM ticket_tags WHERE ticket_id = ? ORDER BY tag ASC')
@@ -18,7 +19,7 @@ router.get('/', (req, res) => {
 });
 
 // POST / — add a tag
-router.post('/', (req, res) => {
+router.post('/', staffOnly, (req, res) => {
   try {
     let { tag } = req.body;
     if (!tag || typeof tag !== 'string') {
@@ -39,7 +40,7 @@ router.post('/', (req, res) => {
 });
 
 // DELETE /:tag — remove a tag
-router.delete('/:tag', (req, res) => {
+router.delete('/:tag', staffOnly, (req, res) => {
   try {
     db.prepare('DELETE FROM ticket_tags WHERE ticket_id = ? AND tag = ?')
       .run(req.params.ticketId, req.params.tag);

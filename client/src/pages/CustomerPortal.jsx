@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import DOMPurify from 'dompurify';
-import { api, TICKET_TYPES, PRODUCTS, PRIORITIES } from '../api';
+import { api, TICKET_TYPES, PRIORITIES } from '../api';
+import { useProducts } from '../context/ProductsContext';
 import { PriorityBadge } from '../components/StatusBadge';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../components/Toast';
@@ -341,6 +342,7 @@ function AnnouncementDetail({ announcement, onBack }) {
 // ── New ticket form ───────────────────────────────────────────────────────────
 
 function NewTicketForm({ onCreated, onCancel, requesterEmail, template }) {
+  const { products: PRODUCTS } = useProducts();
   const [form, setForm] = useState({
     title:       '',
     description: template?.body     || '',
@@ -1139,8 +1141,10 @@ function FeatureStatusBadge({ status }) {
 // Submit idea form
 function SubmitIdeaForm({ userEmail, userName, onSubmitted, onCancel }) {
   const toast = useToast();
+  const { products: PRODUCTS } = useProducts();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [product, setProduct] = useState('');
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e) {
@@ -1151,6 +1155,7 @@ function SubmitIdeaForm({ userEmail, userName, onSubmitted, onCancel }) {
       const idea = await api.submitFeatureRequest({
         title: title.trim(),
         description: description.trim(),
+        product: product,
       });
       toast('Idea submitted! Thanks for your feedback.', 'success');
       onSubmitted(idea);
@@ -1182,13 +1187,23 @@ function SubmitIdeaForm({ userEmail, userName, onSubmitted, onCancel }) {
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, boxSizing: 'border-box' }}
             />
           </div>
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Details (optional)</label>
             <textarea
               value={description} onChange={e => setDescription(e.target.value)}
               rows={5} placeholder="Describe the problem this solves, or how it would work…"
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }}
             />
+          </div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Product</label>
+            <select
+              value={product} onChange={e => setProduct(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, background: '#fff' }}
+            >
+              <option value="">— Not sure / General —</option>
+              {PRODUCTS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
           </div>
           <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 18 }}>
             💬 Your idea will appear anonymously to other community members.
@@ -1364,11 +1379,13 @@ function IdeaDetail({ idea: initial, userEmail, onBack, onVoteToggle }) {
 // Main ideas list
 function IdeasBoard({ userEmail, userName }) {
   const { showToast } = useToast();
+  const { products: PRODUCTS } = useProducts();
   const [features, setFeatures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list'); // 'list' | 'submit' | 'detail'
   const [selected, setSelected] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [productFilter, setProductFilter] = useState('all');
   const [votedIds, setVotedIds] = useState({});
 
   useEffect(() => {
@@ -1427,6 +1444,7 @@ function IdeasBoard({ userEmail, userName }) {
   const STATUS_FILTERS = ['all', 'submitted', 'under_review', 'planned', 'in_progress', 'shipped'];
   const shown = features.filter(f => {
     if (filter !== 'all' && f.status !== filter) return false;
+    if (productFilter !== 'all' && (f.product || '') !== productFilter) return false;
     return true;
   });
 
@@ -1453,7 +1471,7 @@ function IdeasBoard({ userEmail, userName }) {
       </div>
 
       {/* Status filter pills */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {STATUS_FILTERS.map(s => {
           const cfg = s === 'all' ? null : FEATURE_STATUSES[s];
           const isActive = filter === s;
@@ -1466,6 +1484,24 @@ function IdeasBoard({ userEmail, userName }) {
               transition: 'all 0.15s',
             }}>
               {cfg ? `${cfg.emoji} ${cfg.label}` : 'All Ideas'}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Product filter pills */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+        {['all', ...PRODUCTS].map(p => {
+          const isActive = productFilter === p;
+          return (
+            <button key={p} onClick={() => setProductFilter(p)} style={{
+              padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 20, cursor: 'pointer',
+              background: isActive ? '#0F172A' : '#fff',
+              color: isActive ? '#93C5FD' : '#6B7280',
+              border: `1px solid ${isActive ? '#1E293B' : '#E5E7EB'}`,
+              transition: 'all 0.15s',
+            }}>
+              {p === 'all' ? '🏷 All Products' : p}
             </button>
           );
         })}
@@ -1531,8 +1567,13 @@ function IdeasBoard({ userEmail, userName }) {
                       {f.description}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                    by Community Member
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>by Community Member</span>
+                    {f.product && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#1D4ED8', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '1px 8px' }}>
+                        {f.product}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1579,6 +1620,7 @@ function ForumPage({ user }) {
   // Answer form
   const [ansBody,  setAnsBody]  = useState('');
   const [ansSaving,setAnsSaving]= useState(false);
+  const [portalConfirm, setPortalConfirm] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -1642,21 +1684,21 @@ function ForumPage({ user }) {
   }
 
   async function deleteAnswer(answerId) {
-    if (!window.confirm('Delete this answer?')) return;
-    try {
+    setPortalConfirm({ message: 'Delete this answer?', onConfirm: async () => {
       await api.deleteForumAnswer(answerId);
       setSelected((prev) => ({ ...prev, answers: prev.answers.filter((a) => a.id !== answerId), answer_count: Math.max(0, (prev.answer_count || 1) - 1) }));
       toast('Answer deleted', 'success');
-    } catch (e) { toast(e.message, 'error'); }
+    }});
+    return;
   }
 
   async function deleteQuestion(qId) {
-    if (!window.confirm('Delete this question?')) return;
-    try {
+    setPortalConfirm({ message: 'Delete this question?', onConfirm: async () => {
       await api.deleteForumQuestion(qId);
       setView('list');
       toast('Question deleted', 'success');
-    } catch (e) { toast(e.message, 'error'); }
+    }});
+    return;
   }
 
   // ── Ask Question form ──
@@ -1682,7 +1724,7 @@ function ForumPage({ user }) {
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => setView('list')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer' }}>Cancel</button>
             <button type="submit" disabled={!askTitle.trim() || askSaving}
-              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: askTitle.trim() && !askSaving ? '#2563EB' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: askTitle.trim() && !askSaving ? '#1E293B' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
               {askSaving ? 'Posting…' : 'Post Question'}
             </button>
           </div>
@@ -1775,7 +1817,7 @@ function ForumPage({ user }) {
             style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', marginBottom: 14 }} />
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="submit" disabled={!ansBody.trim() || ansSaving}
-              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: ansBody.trim() && !ansSaving ? '#2563EB' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: ansBody.trim() && !ansSaving ? '#1E293B' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
               {ansSaving ? 'Posting…' : 'Post Answer'}
             </button>
           </div>
@@ -1792,7 +1834,7 @@ function ForumPage({ user }) {
           <h2 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: 0 }}>Community Q&A</h2>
           <p style={{ fontSize: 13, color: '#6B7280', margin: '4px 0 0' }}>Ask questions and get answers from the community and our team.</p>
         </div>
-        <button onClick={() => setView('ask')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+        <button onClick={() => setView('ask')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
           + Ask a Question
         </button>
       </div>
@@ -1815,7 +1857,7 @@ function ForumPage({ user }) {
           <div style={{ fontSize: 36, marginBottom: 10 }}>💬</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No questions yet</div>
           <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 20 }}>Be the first to start a conversation.</div>
-          <button onClick={() => setView('ask')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Ask a Question</button>
+          <button onClick={() => setView('ask')} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Ask a Question</button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1842,6 +1884,18 @@ function ForumPage({ user }) {
           ))}
         </div>
       )}
+      {portalConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Confirm Delete</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>{portalConfirm.message}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setPortalConfirm(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={async () => { await portalConfirm.onConfirm(); setPortalConfirm(null); }} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1866,6 +1920,7 @@ function DownloadCenterPage({ user }) {
   const [saving,   setSaving]   = useState(false);
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [portalConfirm, setPortalConfirm] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -1913,12 +1968,12 @@ function DownloadCenterPage({ user }) {
   }
 
   async function del(id) {
-    if (!window.confirm('Delete this download?')) return;
-    try {
+    setPortalConfirm({ message: 'Delete this download?', onConfirm: async () => {
       await api.deleteDownload(id);
       setItems((prev) => prev.filter((i) => i.id !== id));
       toast('Deleted', 'success');
-    } catch (e) { toast(e.message, 'error'); }
+    }});
+    return;
   }
 
   async function toggleActive(item) {
@@ -2029,7 +2084,7 @@ function DownloadCenterPage({ user }) {
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button onClick={() => { setEditing(null); setSelectedFile(null); }} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 8, background: '#fff', color: '#374151', cursor: 'pointer' }}>Cancel</button>
             <button onClick={saveItem} disabled={!editing.title?.trim() || saving}
-              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: editing.title?.trim() && !saving ? '#2563EB' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: editing.title?.trim() && !saving ? '#1E293B' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -2047,7 +2102,7 @@ function DownloadCenterPage({ user }) {
           <p style={{ fontSize: 13, color: '#6B7280', margin: '4px 0 0' }}>Product downloads, release notes, guides, and resources.</p>
         </div>
         {isAdmin && (
-          <button onClick={() => setEditing({ ...blankItem })} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+          <button onClick={() => setEditing({ ...blankItem })} style={{ padding: '9px 20px', fontSize: 13, fontWeight: 700, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
             + Add Download
           </button>
         )}
@@ -2129,7 +2184,7 @@ function DownloadCenterPage({ user }) {
                       {isAdmin && (
                         <>
                           <button onClick={() => setEditing({ ...item })} style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>Edit</button>
-                          <button onClick={() => toggleActive(item)} style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 6, background: '#fff', cursor: 'pointer', color: item.is_active ? '#92400E' : '#059669' }}>
+                          <button onClick={() => toggleActive(item)} style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: item.is_active ? '1px solid #BBF7D0' : '1px solid #E5E7EB', background: item.is_active ? '#F0FDF4' : '#F3F4F6', color: item.is_active ? '#166534' : '#6B7280' }}>
                             {item.is_active ? 'Unpublish' : 'Publish'}
                           </button>
                           <button onClick={() => del(item.id)} style={{ padding: '5px 8px', fontSize: 11, fontWeight: 600, border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', cursor: 'pointer', color: '#DC2626' }}>Delete</button>
@@ -2141,6 +2196,18 @@ function DownloadCenterPage({ user }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {portalConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Confirm Delete</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>{portalConfirm.message}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setPortalConfirm(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={async () => { await portalConfirm.onConfirm(); setPortalConfirm(null); }} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

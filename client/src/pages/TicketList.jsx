@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, STATUSES, PRIORITIES, PRODUCTS, TICKET_TYPES } from '../api';
+import { api, STATUSES, PRIORITIES, TICKET_TYPES } from '../api';
+import { useProducts } from '../context/ProductsContext';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import CreateTicketModal from '../components/CreateTicketModal';
 import { useToast } from '../components/Toast';
@@ -96,7 +97,7 @@ function MultiSelectDropdown({ placeholder, options, selected, onChange }) {
               type="checkbox"
               checked={selected.length === 0}
               onChange={() => onChange([])}
-              style={{ accentColor: '#2563EB' }}
+              style={{ accentColor: '#1E293B' }}
             />
             <span style={{ fontStyle: 'italic' }}>All</span>
           </label>
@@ -116,7 +117,7 @@ function MultiSelectDropdown({ placeholder, options, selected, onChange }) {
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggle(val)}
-                  style={{ accentColor: '#2563EB' }}
+                  style={{ accentColor: '#1E293B' }}
                 />
                 {lbl}
               </label>
@@ -183,7 +184,7 @@ function BulkActionBar({ selectedCount, onClear, onBulkAction, agents, groups })
       <button
         onClick={apply}
         disabled={applying || (!bulkStatus && !bulkPriority && !bulkAssign && !bulkGroup)}
-        style={{ padding: '6px 16px', fontSize: 13, fontWeight: 700, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', opacity: applying ? 0.7 : 1 }}
+        style={{ padding: '6px 16px', fontSize: 13, fontWeight: 700, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', opacity: applying ? 0.7 : 1 }}
       >
         {applying ? 'Applying…' : 'Apply'}
       </button>
@@ -211,6 +212,7 @@ const PENDING_STATUSES = new Set([
 ]);
 
 export default function TicketList({ onSelect, filterStatus }) {
+  const { products: PRODUCTS } = useProducts();
   const [allTickets,  setAllTickets]  = useState([]);
   const [groups,      setGroups]      = useState([]);
   const [agents,      setAgents]      = useState([]);
@@ -219,6 +221,7 @@ export default function TicketList({ onSelect, filterStatus }) {
   const [showNew,     setShowNew]     = useState(false);
   const [filters,     setFilters]     = useState(FILTER_DEFAULTS);
   const [selected,    setSelected]    = useState(new Set()); // selected ticket IDs
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const toast = useToast();
 
   const loadTickets = useCallback(async () => {
@@ -306,12 +309,7 @@ export default function TicketList({ onSelect, filterStatus }) {
     if (!ids.length) return;
 
     if (action === 'delete') {
-      if (!window.confirm(`Delete ${ids.length} ticket(s)? This cannot be undone.`)) return;
-      try {
-        await Promise.all(ids.map((id) => api.deleteTicket(id)));
-        toast(`Deleted ${ids.length} ticket(s)`, 'success');
-        loadTickets();
-      } catch (e) { toast(e.message, 'error'); }
+      setBulkDeleteConfirm(true);
       return;
     }
 
@@ -322,6 +320,16 @@ export default function TicketList({ onSelect, filterStatus }) {
         loadTickets();
       } catch (e) { toast(e.message, 'error'); }
     }
+  }
+
+  async function doBulkDelete() {
+    setBulkDeleteConfirm(false);
+    const ids = [...selected];
+    try {
+      await Promise.all(ids.map((id) => api.deleteTicket(id)));
+      toast(`Deleted ${ids.length} ticket(s)`, 'success');
+      loadTickets();
+    } catch (e) { toast(e.message, 'error'); }
   }
 
   return (
@@ -439,7 +447,7 @@ export default function TicketList({ onSelect, filterStatus }) {
                     checked={allSelected}
                     ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
                     onChange={toggleAll}
-                    style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                    style={{ accentColor: '#1E293B', cursor: 'pointer' }}
                   />
                 </th>
                 <th style={{ width: 60 }}>#</th>
@@ -448,9 +456,8 @@ export default function TicketList({ onSelect, filterStatus }) {
                 <th>Status</th>
                 <th>Priority</th>
                 <th>Product</th>
-                <th>Group</th>
                 <th>Assigned To</th>
-                <th>Source</th>
+                <th>SLA</th>
                 <th>Created</th>
               </tr>
             </thead>
@@ -472,7 +479,7 @@ export default function TicketList({ onSelect, filterStatus }) {
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelect(t.id)}
-                        style={{ accentColor: '#2563EB', cursor: 'pointer' }}
+                        style={{ accentColor: '#1E293B', cursor: 'pointer' }}
                       />
                     </td>
                     <td style={{ color: '#9CA3AF', fontSize: 12 }}>#{t.id}</td>
@@ -488,10 +495,25 @@ export default function TicketList({ onSelect, filterStatus }) {
                     <td><StatusBadge status={t.status} /></td>
                     <td><PriorityBadge priority={t.priority} /></td>
                     <td style={{ fontSize: 12, color: '#6B7280' }}>{t.product || '—'}</td>
-                    <td style={{ fontSize: 12, color: '#6B7280' }}>{t.group_name || '—'}</td>
                     <td style={{ fontSize: 12, color: '#6B7280' }}>{t.assigned_user_name || '—'}</td>
-                    <td>
-                      <span className={`source-badge ${t.source}`}>{t.source}</span>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {t.sla_status === 'breached' ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: '#FEE2E2', color: '#B91C1C' }}>
+                          ⚠ Breached
+                        </span>
+                      ) : t.sla_status === 'met' ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: '#F0FDF4', color: '#166534' }}>
+                          ✓ Met
+                        </span>
+                      ) : t.sla_status === 'ok' ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: '#FFF7ED', color: '#C2410C' }}>
+                          {t.sla_remaining_hours < 1
+                            ? `${Math.round(t.sla_remaining_hours * 60)}m left`
+                            : `${Math.round(t.sla_remaining_hours)}h left`}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11, color: '#D1D5DB' }}>—</span>
+                      )}
                     </td>
                     <td style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>
                       {fmtDate(t.created_at)}
@@ -513,6 +535,21 @@ export default function TicketList({ onSelect, filterStatus }) {
           agents={agents}
           groups={groups}
         />
+      )}
+
+      {bulkDeleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Delete Tickets?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>
+              Delete {selected.size} selected ticket(s)? This cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setBulkDeleteConfirm(false)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doBulkDelete} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showNew && (

@@ -19,18 +19,11 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const handleError   = require('../middleware/handleError');
+const staffOnly     = require('../middleware/staffOnly');
 
 function now() { return new Date().toISOString(); }
 
 const VALID_STATUSES = ['submitted', 'under_review', 'planned', 'in_progress', 'shipped', 'declined'];
-
-// Only agents and admins may perform privileged feature actions
-const staffOnly = (req, res, next) => {
-  if (!['agent', 'admin'].includes(req.user?.role)) {
-    return res.status(403).json({ error: 'Agent or admin access required' });
-  }
-  next();
-};
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
@@ -88,16 +81,16 @@ router.get('/:id', (req, res) => {
 // ── POST /api/features ────────────────────────────────────────────────────────
 // submitter identity is always taken from the verified JWT — never from the request body
 router.post('/', (req, res) => {
-  const { title, description = '' } = req.body;
+  const { title, description = '', product = '' } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   const submitter_email = req.user.email;
   const submitter_name  = req.user.name || req.user.email;
   const ts = now();
   try {
     const result = db.prepare(`
-      INSERT INTO feature_requests (title, description, status, submitter_email, submitter_name, vote_count, created_at, updated_at)
-      VALUES (?, ?, 'submitted', ?, ?, 0, ?, ?)
-    `).run(title.trim(), description, submitter_email, submitter_name, ts, ts);
+      INSERT INTO feature_requests (title, description, product, status, submitter_email, submitter_name, vote_count, created_at, updated_at)
+      VALUES (?, ?, ?, 'submitted', ?, ?, 0, ?, ?)
+    `).run(title.trim(), description, product.trim(), submitter_email, submitter_name, ts, ts);
     const row = db.prepare('SELECT * FROM feature_requests WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ ...row, comments: [], voted: false });
   } catch (e) { return handleError(res, e); }

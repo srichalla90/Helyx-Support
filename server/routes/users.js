@@ -12,9 +12,12 @@ router.param('id', (req, res, next, val) => {
 });
 
 // List all users — any authenticated user (agents need this for dropdowns)
+// Returns only non-sensitive fields (L3)
 router.get('/', (req, res) => {
-  const users = db.prepare('SELECT * FROM users ORDER BY name').all();
-  res.json(users);
+  try {
+    const users = db.prepare('SELECT id, name, email, role, active, created_at FROM users ORDER BY name').all();
+    res.json(users);
+  } catch (e) { return handleError(res, e); }
 });
 
 // Create user — admin only
@@ -24,11 +27,11 @@ router.post('/', adminOnly, (req, res) => {
   const assignedRole = ['admin', 'agent', 'customer'].includes(role) ? role : 'agent';
   try {
     const result = db.prepare('INSERT INTO users (name, email, role, active) VALUES (?, ?, ?, 1)').run(name, email, assignedRole);
-    const user   = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    const user   = db.prepare('SELECT id, name, email, role, active, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(user);
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
-    throw e;
+    if (e.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
+    return handleError(res, e);
   }
 });
 
@@ -42,11 +45,11 @@ router.put('/:id', adminOnly, (req, res) => {
       'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?'
     ).run(name, email, assignedRole, req.params.id);
     if (info.changes === 0) return res.status(404).json({ error: 'User not found' });
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+    const user = db.prepare('SELECT id, name, email, role, active, created_at FROM users WHERE id = ?').get(req.params.id);
     res.json(user);
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
-    throw e;
+    if (e.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
+    return handleError(res, e);
   }
 });
 
@@ -64,12 +67,17 @@ router.patch('/:id/status', adminOnly, (req, res) => {
 // Delete user — admin only
 router.delete('/:id', adminOnly, (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
-  if (!existing) return res.status(404).json({ error: 'User not found' });
-  db.prepare('DELETE FROM group_members WHERE user_id = ?').run(id);
-  db.prepare('UPDATE tickets SET assigned_to = NULL WHERE assigned_to = ?').run(id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(id);
-  res.json({ success: true });
+  try {
+    const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'User not found' });
+    db.prepare('DELETE FROM group_members WHERE user_id = ?').run(id);
+    db.prepare('UPDATE tickets SET assigned_to = NULL WHERE assigned_to = ?').run(id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Delete user error:', e);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;

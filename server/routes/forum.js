@@ -26,7 +26,15 @@ router.get('/', (req, res) => {
     if (answered === '0') where.push(`is_answered = 0`);
     if (where.length) sql += ` WHERE ${where.join(' AND ')}`;
     sql += ` ORDER BY created_at DESC`;
-    res.json(db.prepare(sql).all(...params));
+    const threads = db.prepare(sql).all(...params);
+    const sanitized = threads.map(t => {
+      const result = { ...t };
+      if (!req.user || req.user.role === 'customer') {
+        delete result.author_email;
+      }
+      return result;
+    });
+    res.json(sanitized);
   } catch (e) { return handleError(res, e); }
 });
 
@@ -52,7 +60,19 @@ router.get('/:id', (req, res) => {
     if (!q) return res.status(404).json({ error: 'Not found' });
     db.prepare(`UPDATE forum_questions SET view_count = view_count + 1 WHERE id = ?`).run(q.id);
     const answers = db.prepare(`SELECT * FROM forum_answers WHERE question_id = ? ORDER BY is_accepted DESC, created_at ASC`).all(q.id);
-    res.json({ ...q, view_count: q.view_count + 1, answers });
+    const thread = { ...q, view_count: q.view_count + 1, answers };
+    const result = { ...thread };
+    if (!req.user || req.user.role === 'customer') {
+      delete result.author_email;
+      if (result.answers) {
+        result.answers = result.answers.map(c => {
+          const cc = { ...c };
+          delete cc.author_email;
+          return cc;
+        });
+      }
+    }
+    res.json(result);
   } catch (e) { return handleError(res, e); }
 });
 

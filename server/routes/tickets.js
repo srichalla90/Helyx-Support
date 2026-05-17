@@ -31,7 +31,27 @@ const attachStorage = multer.diskStorage({
     cb(null, `${Date.now()}-${Math.random().toString(36).slice(2,8)}${ext}`);
   },
 });
-const uploadAttach = multer({ storage: attachStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+const uploadAttach = multer({
+  storage: attachStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      'image/jpeg','image/png','image/gif','image/webp',
+      'application/pdf',
+      'text/plain','text/csv',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/zip','application/x-zip-compressed'
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not allowed'), false);
+    }
+  }
+});
 
 // ── Activity helper ───────────────────────────────────────────────────────────
 function logActivity(ticketId, actor, action, field, oldValue, newValue) {
@@ -50,11 +70,24 @@ const TICKET_SELECT = `
          c.name  AS customer_name,
          g.name  AS group_name,
          u.name  AS assigned_user_name,
-         u.email AS assigned_user_email
+         u.email AS assigned_user_email,
+         sp.name             AS sla_policy_name,
+         sp.resolution_hours AS sla_resolution_hours,
+         CASE
+           WHEN t.status IN ('Resolved','Closed','Canceled') THEN 'met'
+           WHEN sp.id IS NULL                                 THEN NULL
+           WHEN datetime('now') > datetime(t.created_at, '+' || sp.resolution_hours || ' hours') THEN 'breached'
+           ELSE 'ok'
+         END AS sla_status,
+         CAST(
+           (julianday(datetime(t.created_at, '+' || sp.resolution_hours || ' hours'))
+            - julianday('now')) * 24
+         AS REAL) AS sla_remaining_hours
   FROM tickets t
   LEFT JOIN customers c ON c.id = t.customer_id
   LEFT JOIN "groups"  g ON g.id = t.group_id
   LEFT JOIN users     u ON u.id = t.assigned_to
+  LEFT JOIN sla_policies sp ON sp.priority = t.priority AND sp.active = 1
 `;
 
 // ── GET /api/tickets ──────────────────────────────────────────────────────────
@@ -105,9 +138,20 @@ router.get('/attachments/:id/download', (req, res) => {
   try {
     const att = db.prepare('SELECT * FROM ticket_attachments WHERE id = ?').get(id);
     if (!att) return res.status(404).json({ error: 'Attachment not found' });
-    const filePath = path.join(ATTACH_DIR, att.filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on disk' });
-    res.download(filePath, att.original_name || att.display_name);
+    // Prevent path traversal
+    const resolved = path.resolve(ATTACH_DIR, att.filename);
+    if (!resolved.startsWith(path.resolve(ATTACH_DIR) + path.sep)) {
+      return res.status(400).json({ error: 'Invalid attachment' });
+    }
+    if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File missing on disk' });
+    // Customer ownership check (MED-6)
+    if (req.user?.role === 'customer') {
+      const ticket = db.prepare('SELECT requester_email, customer_id FROM tickets WHERE id = ?').get(att.ticket_id);
+      if (!ticket || (ticket.requester_email !== req.user.email && ticket.customer_id !== req.user.id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    res.download(resolved, att.original_name || att.display_name);
   } catch (e) { return handleError(res, e); }
 });
 
@@ -135,7 +179,14 @@ router.get('/:id', (req, res) => {
   const ticket = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(id);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
-  const publicOnly = req.query.public_only === '1';
+  if (req.user?.role === 'customer') {
+    if (ticket.requester_email !== req.user.email && ticket.customer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+  }
+
+  const isCustomer = req.user?.role === 'customer';
+  const publicOnly = isCustomer || req.query.public_only === '1';
   const comments = db.prepare(
     `SELECT * FROM ticket_comments WHERE ticket_id = ?${publicOnly ? ' AND is_public = 1' : ''} ORDER BY created_at ASC`
   ).all(id);
@@ -150,6 +201,13 @@ router.get('/:id', (req, res) => {
 // ── GET /api/tickets/:id/activity ─────────────────────────────────────────────
 router.get('/:id/activity', (req, res) => {
   const id = Number(req.params.id);
+  // Customers cannot view internal ticket activity
+  if (req.user?.role === 'customer') {
+    const t = db.prepare('SELECT requester_email FROM tickets WHERE id = ?').get(id);
+    if (!t || t.requester_email !== req.user.email) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
   try {
     const rows = db.prepare(
       'SELECT * FROM ticket_activity WHERE ticket_id = ? ORDER BY created_at ASC'
@@ -214,6 +272,16 @@ router.post('/', (req, res) => {
 // ── PUT /api/tickets/:id ──────────────────────────────────────────────────────
 router.put('/:id', (req, res) => {
   const id     = Number(req.params.id);
+
+  if (req.user?.role === 'customer') {
+    // Customers can only update their own tickets
+    const existing = db.prepare('SELECT requester_email, customer_id FROM tickets WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Ticket not found' });
+    if (existing.requester_email !== req.user.email && existing.customer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+  }
+
   const ticket = db.prepare(TICKET_SELECT + ' WHERE t.id = ?').get(id);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
@@ -330,8 +398,18 @@ router.post('/:id/comments', async (req, res) => {
   const author      = req.user?.name || req.user?.email || 'Agent';
   const author_role = req.user?.role || 'agent';
   if (!body) return res.status(400).json({ error: 'Comment body is required' });
-  const isPublic = (is_public === false || is_public === 0) ? 0 : 1;
+  let isPublic = (is_public === false || is_public === 0) ? 0 : 1;
   const ticketId = Number(req.params.id);
+
+  if (req.user?.role === 'customer') {
+    const ticket = db.prepare('SELECT requester_email, customer_id FROM tickets WHERE id = ?').get(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (ticket.requester_email !== req.user.email && ticket.customer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    // Customers cannot create internal notes
+    isPublic = 1;
+  }
 
   const result = db.prepare(
     `INSERT INTO ticket_comments (ticket_id, author, author_role, body, is_public) VALUES (?, ?, ?, ?, ?)`
@@ -393,8 +471,12 @@ router.post('/:id/comments', async (req, res) => {
 // ── POST /api/tickets/:id/attachments ─────────────────────────────────────────
 router.post('/:id/attachments', uploadAttach.array('files', 10), (req, res) => {
   const ticketId = Number(req.params.id);
+  // Verify ticket exists (M5)
+  const ticket = db.prepare('SELECT id FROM tickets WHERE id = ?').get(ticketId);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
   const commentId = req.body.comment_id ? Number(req.body.comment_id) : null;
-  const uploadedBy = req.body.uploaded_by || 'Agent';
+  // Use authenticated user identity — never trust body for uploaded_by (H1)
+  const uploadedBy = req.user?.email || req.user?.name || 'Agent';
   try {
     const inserted = [];
     for (const file of req.files || []) {

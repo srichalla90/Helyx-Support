@@ -132,8 +132,8 @@ router.post('/azure', async (req, res) => {
 // Accepts a plain email, looks it up in the users table and returns an app JWT.
 // Mirrors the Azure endpoint exactly — unknown emails are rejected, not auto-assigned.
 router.post('/dev-login', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(404).json({ error: 'Not found.' });
+  if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
+    return res.status(403).json({ error: 'Dev login is only available in development mode' });
   }
 
   const { email } = req.body || {};

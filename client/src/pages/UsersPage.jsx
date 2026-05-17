@@ -271,9 +271,8 @@ export default function UsersPage() {
                             Edit
                           </button>
                           <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ color: u.active === 0 ? '#1E293B' : '#DC2626' }}
                             onClick={() => promptStatus(u)}
+                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: u.active === 0 ? '1px solid #E5E7EB' : '1px solid #BBF7D0', background: u.active === 0 ? '#F3F4F6' : '#F0FDF4', color: u.active === 0 ? '#6B7280' : '#166534' }}
                           >
                             {u.active === 0 ? 'Activate' : 'Deactivate'}
                           </button>

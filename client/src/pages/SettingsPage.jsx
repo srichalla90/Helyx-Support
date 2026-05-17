@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import DOMPurify from 'dompurify';
-import { api, TICKET_TYPES, PRODUCTS, PRIORITIES } from '../api';
+import { api, TICKET_TYPES, PRIORITIES } from '../api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../components/Toast';
+import { useProducts } from '../context/ProductsContext';
 import EmailTemplatesPage from './EmailTemplatesPage';
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
@@ -82,12 +83,13 @@ function CannedResponsesTab() {
   const toast = useToast();
   const isAdmin = user?.role === 'admin';
 
-  const [responses, setResponses] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [editing,   setEditing]   = useState(null); // {id, title, body, category} or null
-  const [saving,    setSaving]    = useState(false);
-  const [showNew,   setShowNew]   = useState(false);
-  const [newForm,   setNewForm]   = useState({ title: '', body: '', category: 'General' });
+  const [responses,         setResponses]         = useState([]);
+  const [loading,           setLoading]           = useState(true);
+  const [editing,           setEditing]           = useState(null); // {id, title, body, category} or null
+  const [saving,            setSaving]            = useState(false);
+  const [showNew,           setShowNew]           = useState(false);
+  const [newForm,           setNewForm]           = useState({ title: '', body: '', category: 'General' });
+  const [confirmDeleteResp, setConfirmDeleteResp] = useState(null);
 
   useEffect(() => {
     api.getCannedResponses().then(setResponses).catch(() => toast('Failed to load', 'error')).finally(() => setLoading(false));
@@ -117,11 +119,11 @@ function CannedResponsesTab() {
     finally { setSaving(false); }
   }
 
-  async function deleteResponse(id) {
-    if (!window.confirm('Delete this canned response?')) return;
+  async function doDeleteResponse() {
     try {
-      await api.deleteCannedResponse(id);
-      setResponses((prev) => prev.filter((r) => r.id !== id));
+      await api.deleteCannedResponse(confirmDeleteResp);
+      setResponses((prev) => prev.filter((r) => r.id !== confirmDeleteResp));
+      setConfirmDeleteResp(null);
       toast('Deleted', 'success');
     } catch (e) { toast(e.message, 'error'); }
   }
@@ -134,10 +136,23 @@ function CannedResponsesTab() {
 
   return (
     <div>
+      {/* Delete confirm modal */}
+      {confirmDeleteResp && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Delete Canned Response?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>This canned response will be permanently deleted.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDeleteResp(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doDeleteResponse} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Canned Responses ({responses.length})</h3>
         {isAdmin && (
-          <button onClick={() => setShowNew(true)} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+          <button onClick={() => setShowNew(true)} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
             + New Response
           </button>
         )}
@@ -160,7 +175,7 @@ function CannedResponsesTab() {
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={() => setShowNew(false)} style={{ padding: '7px 14px', fontSize: 13, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
-            <button onClick={createResponse} disabled={saving} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+            <button onClick={createResponse} disabled={saving} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
               {saving ? 'Saving…' : 'Create'}
             </button>
           </div>
@@ -182,7 +197,7 @@ function CannedResponsesTab() {
                     <input value={editing.category} onChange={(e) => setEditing((f) => ({ ...f, category: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} placeholder="Category" />
                     <textarea value={editing.body} onChange={(e) => setEditing((f) => ({ ...f, body: e.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', marginBottom: 8 }} />
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={updateResponse} disabled={saving} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save'}</button>
+                      <button onClick={updateResponse} disabled={saving} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save'}</button>
                       <button onClick={() => setEditing(null)} style={{ padding: '6px 12px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
                     </div>
                   </div>
@@ -197,7 +212,7 @@ function CannedResponsesTab() {
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
                         <button onClick={() => setEditing({ ...r })} style={{ padding: '4px 10px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
-                        <button onClick={() => deleteResponse(r.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Delete</button>
+                        <button onClick={() => setConfirmDeleteResp(r.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Delete</button>
                       </div>
                     )}
                   </div>
@@ -216,16 +231,18 @@ function SLATab() {
   const user = useUser();
   const toast = useToast();
   const isAdmin = user?.role === 'admin';
-  const [policies, setPolicies] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [editing,  setEditing]  = useState(null);
-  const [saving,   setSaving]   = useState(false);
+  const [policies,       setPolicies]       = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [editing,        setEditing]        = useState(null);
+  const [saving,         setSaving]         = useState(false);
+  const [confirmDelSLA,  setConfirmDelSLA]  = useState(null);
 
   useEffect(() => {
     api.getSLAPolicies().then(setPolicies).catch(() => toast('Failed to load SLA policies', 'error')).finally(() => setLoading(false));
   }, []);
 
   async function savePolicy() {
+    if (!editing.name?.trim()) return toast('Policy name is required', 'error');
     setSaving(true);
     try {
       let updated;
@@ -242,11 +259,11 @@ function SLATab() {
     finally { setSaving(false); }
   }
 
-  async function deletePolicy(id) {
-    if (!window.confirm('Delete this SLA policy? This cannot be undone.')) return;
+  async function doDeleteSLA() {
     try {
-      await api.deleteSLAPolicy(id);
-      setPolicies((prev) => prev.filter((p) => p.id !== id));
+      await api.deleteSLAPolicy(confirmDelSLA);
+      setPolicies((prev) => prev.filter((p) => p.id !== confirmDelSLA));
+      setConfirmDelSLA(null);
       toast('SLA policy deleted', 'success');
     } catch (e) { toast(e.message, 'error'); }
   }
@@ -258,11 +275,24 @@ function SLATab() {
 
   return (
     <div>
+      {/* Delete confirm modal */}
+      {confirmDelSLA && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Delete SLA Policy?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>This SLA policy will be permanently deleted. This cannot be undone.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDelSLA(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doDeleteSLA} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>SLA Policies</h3>
         {isAdmin && (
           <button onClick={() => setEditing({ name: '', priority: 'Medium', first_response_hours: 8, resolution_hours: 48 })}
-            style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+            style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
             + Add Policy
           </button>
         )}
@@ -292,7 +322,7 @@ function SLATab() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={savePolicy} disabled={saving} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save'}</button>
+            <button onClick={savePolicy} disabled={saving} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save'}</button>
             <button onClick={() => setEditing(null)} style={{ padding: '7px 12px', fontSize: 13, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
@@ -321,7 +351,7 @@ function SLATab() {
                 {isAdmin && (
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                     <button onClick={() => setEditing({ ...p })} style={{ padding: '4px 10px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer', marginRight: 6 }}>Edit</button>
-                    <button onClick={() => deletePolicy(p.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Delete</button>
+                    <button onClick={() => setConfirmDelSLA(p.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Delete</button>
                   </td>
                 )}
               </tr>
@@ -513,7 +543,7 @@ function CustomFieldsTab() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Custom Ticket Fields ({activeFields.length} active)</h3>
         {isAdmin && (
-          <button onClick={startNew} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+          <button onClick={startNew} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
             + New Field
           </button>
         )}
@@ -572,7 +602,7 @@ function CustomFieldsTab() {
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={save} disabled={saving} style={{ padding: '7px 20px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : isNew ? 'Create Field' : 'Save Changes'}</button>
+            <button onClick={save} disabled={saving} style={{ padding: '7px 20px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : isNew ? 'Create Field' : 'Save Changes'}</button>
             <button onClick={cancelEdit} style={{ padding: '7px 14px', fontSize: 13, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
@@ -603,7 +633,7 @@ function CustomFieldsTab() {
               {isAdmin && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button onClick={() => startEdit(f)} style={{ padding: '4px 10px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
-                  <button onClick={() => toggleActive(f)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Deactivate</button>
+                  <button onClick={() => toggleActive(f)} style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', borderRadius: 6, cursor: 'pointer' }}>Deactivate</button>
                 </div>
               )}
             </div>
@@ -618,7 +648,7 @@ function CustomFieldsTab() {
           {inactiveFields.map((f) => (
             <div key={f.id} style={{ background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 8, padding: '10px 16px', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.7 }}>
               <div style={{ fontSize: 13, color: '#6B7280' }}>{f.label} <span style={{ fontSize: 11 }}>({FIELD_TYPE_LABELS[f.field_type]})</span></div>
-              <button onClick={() => toggleActive(f)} style={{ padding: '4px 10px', fontSize: 12, background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', borderRadius: 6, cursor: 'pointer' }}>Activate</button>
+              <button onClick={() => toggleActive(f)} style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer' }}>Activate</button>
             </div>
           ))}
         </div>
@@ -728,7 +758,7 @@ function SystemStatusTab() {
         {isAdmin ? (
           <button
             onClick={save} disabled={saving}
-            style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#93C5FD' : '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}
+            style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#64748B' : '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}
           >
             {saving ? 'Saving…' : 'Update Status'}
           </button>
@@ -749,11 +779,13 @@ function TicketTemplatesTab() {
   const toast   = useToast();
   const user    = useUser();
   const isAdmin = user?.role === 'admin';
-  const [templates, setTemplates] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [editing,   setEditing]   = useState(null); // null = list, {} = new, {id,...} = edit
+  const [templates,       setTemplates]       = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [editing,         setEditing]         = useState(null); // null = list, {} = new, {id,...} = edit
+  const [confirmDelTmpl,  setConfirmDelTmpl]  = useState(null);
 
-  const TT = TICKET_TYPES, PR = PRODUCTS, PRIO = PRIORITIES;
+  const { products: PR } = useProducts();
+  const TT = TICKET_TYPES, PRIO = PRIORITIES;
 
   useEffect(() => {
     api.getTicketTemplates()
@@ -777,11 +809,11 @@ function TicketTemplatesTab() {
     } catch (e) { toast(e.message || 'Failed to save', 'error'); }
   }
 
-  async function del(id) {
-    if (!window.confirm('Delete this template?')) return;
+  async function doDelTemplate() {
     try {
-      await api.deleteTicketTemplate(id);
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      await api.deleteTicketTemplate(confirmDelTmpl);
+      setTemplates((prev) => prev.filter((t) => t.id !== confirmDelTmpl));
+      setConfirmDelTmpl(null);
       toast('Template deleted', 'success');
     } catch (e) { toast(e.message || 'Failed to delete', 'error'); }
   }
@@ -857,7 +889,7 @@ function TicketTemplatesTab() {
               Cancel
             </button>
             <button onClick={save} disabled={!editing.name?.trim()}
-              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: editing.name?.trim() ? '#2563EB' : '#93C5FD', color: '#fff', border: 'none', borderRadius: 8, cursor: editing.name?.trim() ? 'pointer' : 'not-allowed' }}>
+              style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, background: editing.name?.trim() ? '#1E293B' : '#94A3B8', color: '#fff', border: 'none', borderRadius: 8, cursor: editing.name?.trim() ? 'pointer' : 'not-allowed' }}>
               Save Template
             </button>
           </div>
@@ -868,6 +900,19 @@ function TicketTemplatesTab() {
 
   return (
     <div style={{ maxWidth: 720 }}>
+      {/* Delete confirm modal */}
+      {confirmDelTmpl && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Delete Template?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>This template will be permanently deleted.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDelTmpl(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doDelTemplate} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Ticket Templates</h3>
@@ -875,7 +920,7 @@ function TicketTemplatesTab() {
         </div>
         {isAdmin && (
           <button onClick={() => setEditing({ icon: '📋', name: '', description: '', type: '', product: '', priority: 'Medium', body: '' })}
-            style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
             + New Template
           </button>
         )}
@@ -888,7 +933,7 @@ function TicketTemplatesTab() {
           <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>Templates help customers submit better-structured tickets.</div>
           {isAdmin && (
             <button onClick={() => setEditing({ icon: '📋', name: '', description: '', type: '', product: '', priority: 'Medium', body: '' })}
-              style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+              style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
               Create your first template
             </button>
           )}
@@ -910,7 +955,7 @@ function TicketTemplatesTab() {
               {isAdmin && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button onClick={() => setEditing({ ...t })} style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, border: '1px solid #D1D5DB', borderRadius: 6, background: '#fff', cursor: 'pointer', color: '#374151' }}>Edit</button>
-                  <button onClick={() => del(t.id)} style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', cursor: 'pointer', color: '#DC2626' }}>Del</button>
+                  <button onClick={() => setConfirmDelTmpl(t.id)} style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', cursor: 'pointer', color: '#DC2626' }}>Delete</button>
                 </div>
               )}
             </div>
@@ -922,43 +967,69 @@ function TicketTemplatesTab() {
 }
 
 // ── Automation Rules Tab ──────────────────────────────────────────────────────
-const CONDITION_FIELDS = ['priority', 'status', 'type', 'source', 'product', 'title', 'requester_email'];
-const CONDITION_OPS    = ['is', 'is_not', 'contains', 'not_contains'];
-const ACTION_TYPES     = ['set_priority', 'set_status', 'set_group', 'set_assignee', 'add_tag'];
-const ACTION_LABELS    = { set_priority: 'Set Priority', set_status: 'Set Status', set_group: 'Set Group', set_assignee: 'Set Assignee', add_tag: 'Add Tag' };
+const CONDITION_FIELD_DEFS = [
+  { key: 'priority',        label: 'Priority',        type: 'enum', options: ['Low', 'Medium', 'High', 'Critical'] },
+  { key: 'status',          label: 'Status',          type: 'enum', options: ['Open', 'Pending', 'In Investigation', 'Pending Engineering', 'Waiting on Customer', 'Pending Release', 'Resolved', 'Closed'] },
+  { key: 'type',            label: 'Type',            type: 'enum', options: ['Question', 'Problem', 'Incident', 'Feature Request', 'Bug'] },
+  { key: 'source',          label: 'Source',          type: 'enum', options: ['Email', 'Portal', 'Phone', 'Chat', 'API'] },
+  { key: 'product',         label: 'Product',         type: 'text' },
+  { key: 'title',           label: 'Subject',         type: 'text' },
+  { key: 'requester_email', label: 'Requester Email', type: 'text' },
+];
+const ENUM_OPS = [
+  { key: 'is',     label: 'is' },
+  { key: 'is_not', label: 'is not' },
+];
+const TEXT_OPS = [
+  { key: 'is',           label: 'is' },
+  { key: 'is_not',       label: 'is not' },
+  { key: 'contains',     label: 'contains' },
+  { key: 'not_contains', label: 'does not contain' },
+];
+const AUTO_ACTION_TYPES   = ['set_priority', 'set_status', 'set_group', 'set_assignee', 'add_tag'];
+const AUTO_ACTION_LABELS  = { set_priority: 'Set Priority', set_status: 'Set Status', set_group: 'Set Group', set_assignee: 'Assign To', add_tag: 'Add Tag' };
+const TRIGGER_LABELS      = { ticket_created: 'ticket is created', ticket_updated: 'ticket is updated' };
+
+function conditionSummary(c) {
+  const def      = CONDITION_FIELD_DEFS.find((d) => d.key === c.field);
+  const fieldLbl = def?.label || c.field;
+  const opLbl    = [...ENUM_OPS, ...TEXT_OPS].find((o) => o.key === c.operator)?.label || c.operator;
+  return `${fieldLbl} ${opLbl} "${c.value}"`;
+}
+function actionSummary(a, groups, agents) {
+  const label = AUTO_ACTION_LABELS[a.type] || a.type;
+  let valLabel = a.value;
+  if (a.type === 'set_group')    { const g  = groups.find((g)  => String(g.id)  === String(a.value)); valLabel = g  ? g.name  : a.value; }
+  if (a.type === 'set_assignee') { const ag = agents.find((ag) => String(ag.id) === String(a.value)); valLabel = ag ? ag.name : a.value; }
+  const delay = Number(a.delay_hours) || 0;
+  const delayStr = delay > 0
+    ? (delay % 24 === 0 ? ` (after ${delay / 24} day${delay / 24 !== 1 ? 's' : ''})` : ` (after ${delay} hr${delay !== 1 ? 's' : ''})`)
+    : '';
+  return `${label}: ${valLabel}${delayStr}`;
+}
 
 function AutomationTab() {
-  const user = useUser();
-  const toast = useToast();
+  const user    = useUser();
+  const toast   = useToast();
   const isAdmin = user?.role === 'admin';
 
-  const [rules,   setRules]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null);
-  const [saving,  setSaving]  = useState(false);
-  const [groups,  setGroups]  = useState([]);
-  const [agents,  setAgents]  = useState([]);
+  const [rules,         setRules]         = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [editing,       setEditing]       = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [groups,        setGroups]        = useState([]);
+  const [agents,        setAgents]        = useState([]);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getAutomationRules(),
-      api.getGroups(),
-      api.getUsers(),
-    ]).then(([r, g, u]) => {
-      setRules(r);
-      setGroups(g);
-      setAgents(u.filter((usr) => usr.role !== 'customer'));
-    }).catch(() => toast('Failed to load', 'error')).finally(() => setLoading(false));
+    Promise.all([api.getAutomationRules(), api.getGroups(), api.getUsers()])
+      .then(([r, g, u]) => { setRules(r); setGroups(g); setAgents(u.filter((u) => u.role !== 'customer')); })
+      .catch(() => toast('Failed to load', 'error'))
+      .finally(() => setLoading(false));
   }, []);
 
   function newRule() {
-    setEditing({
-      name: '',
-      event: 'ticket_created',
-      conditions: [{ field: 'priority', operator: 'is', value: 'Critical' }],
-      actions: [{ type: 'set_priority', value: 'Critical' }],
-      active: true,
-    });
+    setEditing({ name: '', event: 'ticket_created', conditions: [{ field: 'priority', operator: 'is', value: 'Critical' }], actions: [{ type: 'set_priority', value: 'Critical', delay_hours: 0 }], active: true });
   }
 
   async function saveRule() {
@@ -979,12 +1050,12 @@ function AutomationTab() {
     finally { setSaving(false); }
   }
 
-  async function deleteRule(id) {
-    if (!window.confirm('Delete this rule?')) return;
+  async function doDeleteRule() {
     try {
-      await api.deleteAutomationRule(id);
-      setRules((prev) => prev.filter((r) => r.id !== id));
-      toast('Deleted', 'success');
+      await api.deleteAutomationRule(confirmDelete);
+      setRules((prev) => prev.filter((r) => r.id !== confirmDelete));
+      setConfirmDelete(null);
+      toast('Rule deleted', 'success');
     } catch (e) { toast(e.message, 'error'); }
   }
 
@@ -996,45 +1067,85 @@ function AutomationTab() {
   }
 
   function addCondition() {
-    setEditing((f) => ({ ...f, conditions: [...f.conditions, { field: 'priority', operator: 'is', value: '' }] }));
+    setEditing((f) => ({ ...f, conditions: [...f.conditions, { field: 'priority', operator: 'is', value: 'Low' }] }));
   }
   function removeCondition(i) {
     setEditing((f) => ({ ...f, conditions: f.conditions.filter((_, ci) => ci !== i) }));
   }
   function updateCondition(i, key, val) {
-    setEditing((f) => ({ ...f, conditions: f.conditions.map((c, ci) => ci === i ? { ...c, [key]: val } : c) }));
+    setEditing((f) => ({
+      ...f,
+      conditions: f.conditions.map((c, ci) => {
+        if (ci !== i) return c;
+        const u = { ...c, [key]: val };
+        if (key === 'field') {
+          const def  = CONDITION_FIELD_DEFS.find((d) => d.key === val);
+          u.operator = 'is';
+          u.value    = def?.type === 'enum' ? (def.options[0] || '') : '';
+        }
+        return u;
+      }),
+    }));
   }
   function addAction() {
-    setEditing((f) => ({ ...f, actions: [...f.actions, { type: 'set_priority', value: 'High' }] }));
+    setEditing((f) => ({ ...f, actions: [...f.actions, { type: 'set_priority', value: 'High', delay_hours: 0 }] }));
   }
   function removeAction(i) {
     setEditing((f) => ({ ...f, actions: f.actions.filter((_, ai) => ai !== i) }));
   }
   function updateAction(i, key, val) {
-    setEditing((f) => ({ ...f, actions: f.actions.map((a, ai) => ai === i ? { ...a, [key]: val } : a) }));
+    setEditing((f) => ({
+      ...f,
+      actions: f.actions.map((a, ai) => {
+        if (ai !== i) return a;
+        const u = { ...a, [key]: val };
+        if (key === 'type') {
+          if (val === 'set_priority') u.value = 'High';
+          else if (val === 'set_status')   u.value = 'Open';
+          else if (val === 'set_group')    u.value = groups[0] ? String(groups[0].id) : '';
+          else if (val === 'set_assignee') u.value = agents[0] ? String(agents[0].id) : '';
+          else u.value = '';
+        }
+        return u;
+      }),
+    }));
   }
 
   function actionValueOptions(type) {
     switch (type) {
-      case 'set_priority': return ['Low', 'Medium', 'High', 'Critical'];
-      case 'set_status':   return ['Open', 'Pending', 'In Investigation', 'Pending Engineering', 'Waiting on Customer', 'Pending Release', 'Resolved', 'Closed'];
+      case 'set_priority': return ['Low', 'Medium', 'High', 'Critical'].map((o) => ({ v: o, l: o }));
+      case 'set_status':   return ['Open', 'Pending', 'In Investigation', 'Pending Engineering', 'Waiting on Customer', 'Pending Release', 'Resolved', 'Closed'].map((o) => ({ v: o, l: o }));
       case 'set_group':    return groups.map((g) => ({ v: String(g.id), l: g.name }));
       case 'set_assignee': return agents.map((a) => ({ v: String(a.id), l: a.name }));
-      default: return null; // free text
+      default: return null;
     }
   }
 
-  const selStyle = { padding: '5px 8px', fontSize: 12, border: '1px solid #D1D5DB', borderRadius: 6, background: '#fff', outline: 'none' };
-  const inpStyle = { padding: '5px 8px', fontSize: 12, border: '1px solid #D1D5DB', borderRadius: 6, outline: 'none', width: 120 };
+  const selStyle = { padding: '6px 8px', fontSize: 12, border: '1px solid #D1D5DB', borderRadius: 6, background: '#fff', outline: 'none' };
+  const inpStyle = { padding: '6px 8px', fontSize: 12, border: '1px solid #D1D5DB', borderRadius: 6, outline: 'none', width: 130 };
 
   if (loading) return <div style={{ color: '#9CA3AF', fontSize: 13 }}>Loading…</div>;
 
   return (
     <div>
+      {/* Delete confirm modal */}
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 10 }}>Delete Rule?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>This automation rule will be permanently deleted. This cannot be undone.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDelete(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doDeleteRule} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Automation Rules ({rules.length})</h3>
-        {isAdmin && (
-          <button onClick={newRule} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+        {isAdmin && !editing && (
+          <button onClick={newRule} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
             + New Rule
           </button>
         )}
@@ -1042,12 +1153,15 @@ function AutomationTab() {
 
       {/* Rule editor */}
       {editing && (
-        <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Rule Name</label>
-            <input value={editing.name} onChange={(e) => setEditing((f) => ({ ...f, name: e.target.value }))} style={{ ...inpStyle, width: '100%' }} placeholder="e.g. Escalate critical tickets" />
-          </div>
+        <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 14 }}>{editing.id ? 'Edit Rule' : 'New Rule'}</div>
+
           <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Rule Name</label>
+            <input value={editing.name} onChange={(e) => setEditing((f) => ({ ...f, name: e.target.value }))} style={{ ...inpStyle, width: '100%', boxSizing: 'border-box' }} placeholder="e.g. Auto-close resolved tickets" />
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Trigger</label>
             <select value={editing.event} onChange={(e) => setEditing((f) => ({ ...f, event: e.target.value }))} style={selStyle}>
               <option value="ticket_created">When a ticket is created</option>
@@ -1056,86 +1170,323 @@ function AutomationTab() {
           </div>
 
           {/* Conditions */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>IF all conditions match:</div>
-            {editing.conditions.map((c, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                <select value={c.field} onChange={(e) => updateCondition(i, 'field', e.target.value)} style={selStyle}>
-                  {CONDITION_FIELDS.map((f) => <option key={f}>{f}</option>)}
-                </select>
-                <select value={c.operator} onChange={(e) => updateCondition(i, 'operator', e.target.value)} style={selStyle}>
-                  {CONDITION_OPS.map((op) => <option key={op}>{op}</option>)}
-                </select>
-                <input value={c.value} onChange={(e) => updateCondition(i, 'value', e.target.value)} style={inpStyle} placeholder="value" />
-                <button onClick={() => removeCondition(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16 }}>×</button>
-              </div>
-            ))}
-            <button onClick={addCondition} style={{ fontSize: 12, color: '#2563EB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>+ Add condition</button>
-          </div>
-
-          {/* Actions */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>THEN perform actions:</div>
-            {editing.actions.map((a, i) => {
-              const opts = actionValueOptions(a.type);
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>IF</span>
+              All of these conditions match:
+            </div>
+            {editing.conditions.map((c, i) => {
+              const def = CONDITION_FIELD_DEFS.find((d) => d.key === c.field) || { type: 'text', options: [] };
+              const ops = def.type === 'enum' ? ENUM_OPS : TEXT_OPS;
               return (
-                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-                  <select value={a.type} onChange={(e) => updateAction(i, 'type', e.target.value)} style={selStyle}>
-                    {ACTION_TYPES.map((t) => <option key={t} value={t}>{ACTION_LABELS[t]}</option>)}
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', flexWrap: 'wrap' }}>
+                  <select value={c.field} onChange={(e) => updateCondition(i, 'field', e.target.value)} style={selStyle}>
+                    {CONDITION_FIELD_DEFS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
                   </select>
-                  {opts ? (
-                    <select value={a.value} onChange={(e) => updateAction(i, 'value', e.target.value)} style={selStyle}>
-                      {Array.isArray(opts) && typeof opts[0] === 'string'
-                        ? opts.map((o) => <option key={o}>{o}</option>)
-                        : opts.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)
-                      }
+                  <select value={c.operator} onChange={(e) => updateCondition(i, 'operator', e.target.value)} style={selStyle}>
+                    {ops.map((op) => <option key={op.key} value={op.key}>{op.label}</option>)}
+                  </select>
+                  {def.type === 'enum' ? (
+                    <select value={c.value} onChange={(e) => updateCondition(i, 'value', e.target.value)} style={selStyle}>
+                      {def.options.map((o) => <option key={o}>{o}</option>)}
                     </select>
                   ) : (
-                    <input value={a.value} onChange={(e) => updateAction(i, 'value', e.target.value)} style={inpStyle} placeholder="value" />
+                    <input value={c.value} onChange={(e) => updateCondition(i, 'value', e.target.value)} style={inpStyle} placeholder="value" />
                   )}
-                  <button onClick={() => removeAction(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16 }}>×</button>
+                  <button onClick={() => removeCondition(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px', marginLeft: 'auto' }} title="Remove">×</button>
                 </div>
               );
             })}
-            <button onClick={addAction} style={{ fontSize: 12, color: '#2563EB', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>+ Add action</button>
+            <button onClick={addCondition} style={{ fontSize: 12, color: '#64748B', background: 'none', border: '1px dashed #CBD5E1', borderRadius: 6, cursor: 'pointer', padding: '4px 10px' }}>+ Add condition</button>
+          </div>
+
+          {/* Actions */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>THEN</span>
+              Perform these actions:
+            </div>
+            {editing.actions.map((a, i) => {
+              const opts = actionValueOptions(a.type);
+              return (
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', flexWrap: 'wrap' }}>
+                  <select value={a.type} onChange={(e) => updateAction(i, 'type', e.target.value)} style={selStyle}>
+                    {AUTO_ACTION_TYPES.map((t) => <option key={t} value={t}>{AUTO_ACTION_LABELS[t]}</option>)}
+                  </select>
+                  {opts ? (
+                    <select value={a.value} onChange={(e) => updateAction(i, 'value', e.target.value)} style={selStyle}>
+                      {opts.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+                    </select>
+                  ) : (
+                    <input value={a.value} onChange={(e) => updateAction(i, 'value', e.target.value)} style={inpStyle} placeholder="tag name" />
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}>after</span>
+                    <input
+                      type="number" min="0" step="1"
+                      value={Number(a.delay_hours) || 0}
+                      onChange={(e) => updateAction(i, 'delay_hours', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                      style={{ ...inpStyle, width: 52, textAlign: 'center' }}
+                    />
+                    <span style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}>hrs</span>
+                  </div>
+                  <button onClick={() => removeAction(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px', marginLeft: 'auto' }} title="Remove">×</button>
+                </div>
+              );
+            })}
+            <button onClick={addAction} style={{ fontSize: 12, color: '#64748B', background: 'none', border: '1px dashed #CBD5E1', borderRadius: 6, cursor: 'pointer', padding: '4px 10px' }}>+ Add action</button>
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={saveRule} disabled={saving} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#2563EB', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save Rule'}</button>
-            <button onClick={() => setEditing(null)} style={{ padding: '7px 12px', fontSize: 13, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+            <button onClick={saveRule} disabled={saving} style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save Rule'}</button>
+            <button onClick={() => setEditing(null)} style={{ padding: '8px 14px', fontSize: 13, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* Rule list */}
-      {rules.length === 0 ? (
-        <div style={{ color: '#9CA3AF', fontSize: 13, padding: 20, textAlign: 'center' }}>No automation rules yet.</div>
+      {rules.length === 0 && !editing ? (
+        <div style={{ color: '#9CA3AF', fontSize: 13, padding: 32, textAlign: 'center', background: '#F8FAFC', borderRadius: 10, border: '1px dashed #E5E7EB' }}>
+          No automation rules yet. Click "+ New Rule" to create one.
+        </div>
       ) : (
         rules.map((r) => (
-          <div key={r.id} style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{r.name}</span>
-                <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 999, background: r.active ? '#DCFCE7' : '#F3F4F6', color: r.active ? '#166534' : '#9CA3AF', fontWeight: 600 }}>
-                  {r.active ? 'Active' : 'Disabled'}
-                </span>
-                <span style={{ fontSize: 11, color: '#9CA3AF' }}>on {r.event.replace('_', ' ')}</span>
+          <div key={r.id} style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px', marginBottom: 10, opacity: r.active ? 1 : 0.72 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{r.name}</span>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: r.active ? '#DCFCE7' : '#F3F4F6', color: r.active ? '#166534' : '#9CA3AF', fontWeight: 600 }}>
+                    {r.active ? 'Active' : 'Disabled'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>Runs when {TRIGGER_LABELS[r.event] || r.event}</div>
+                {r.conditions?.length > 0 && (
+                  <div style={{ marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 4, padding: '1px 6px', marginRight: 6 }}>IF</span>
+                    <span style={{ fontSize: 12, color: '#374151' }}>
+                      {r.conditions.map((c, ci) => (
+                        <span key={ci}>{ci > 0 && <span style={{ color: '#94A3B8', margin: '0 4px' }}>AND</span>}{conditionSummary(c)}</span>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                {r.actions?.length > 0 && (
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#166534', background: '#F0FDF4', borderRadius: 4, padding: '1px 6px', marginRight: 6 }}>THEN</span>
+                    <span style={{ fontSize: 12, color: '#374151' }}>
+                      {r.actions.map((a, ai) => (
+                        <span key={ai}>{ai > 0 && <span style={{ color: '#94A3B8', margin: '0 4px' }}>·</span>}{actionSummary(a, groups, agents)}</span>
+                      ))}
+                    </span>
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: '#6B7280' }}>
-                {r.conditions?.length} condition(s) → {r.actions?.length} action(s)
-              </div>
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 14 }}>
+                  <button onClick={() => toggleRule(r.id, !r.active)} style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', background: r.active ? '#F0FDF4' : '#F3F4F6', color: r.active ? '#166534' : '#6B7280', border: r.active ? '1px solid #BBF7D0' : '1px solid #E5E7EB' }}>
+                    {r.active ? 'Disable' : 'Enable'}
+                  </button>
+                  <button onClick={() => setEditing({ ...r })} style={{ padding: '4px 10px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
+                  <button onClick={() => setConfirmDelete(r.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Delete</button>
+                </div>
+              )}
             </div>
-            {isAdmin && (
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
-                <button onClick={() => toggleRule(r.id, !r.active)} style={{ padding: '4px 10px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer' }}>
-                  {r.active ? 'Disable' : 'Enable'}
-                </button>
-                <button onClick={() => setEditing({ ...r })} style={{ padding: '4px 10px', fontSize: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
-                <button onClick={() => deleteRule(r.id)} style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer' }}>Delete</button>
-              </div>
-            )}
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+// ── Tags Tab ───────────────────────────────────────────────────────────────────
+const TAG_PRESETS = [
+  { label: 'Blue',   color: '#1D4ED8', bg: '#EFF6FF',  border: '#BFDBFE' },
+  { label: 'Green',  color: '#15803D', bg: '#F0FDF4',  border: '#BBF7D0' },
+  { label: 'Red',    color: '#B91C1C', bg: '#FEF2F2',  border: '#FECACA' },
+  { label: 'Yellow', color: '#92400E', bg: '#FFFBEB',  border: '#FDE68A' },
+  { label: 'Purple', color: '#6D28D9', bg: '#F5F3FF',  border: '#DDD6FE' },
+  { label: 'Pink',   color: '#9D174D', bg: '#FDF2F8',  border: '#FBCFE8' },
+  { label: 'Gray',   color: '#374151', bg: '#F3F4F6',  border: '#D1D5DB' },
+  { label: 'Teal',   color: '#0F766E', bg: '#F0FDFA',  border: '#99F6E4' },
+];
+
+function TagsTab() {
+  const user    = useUser();
+  const toast   = useToast();
+  const isAdmin = user?.role === 'admin';
+
+  const [tags,       setTags]       = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [showNew,    setShowNew]    = useState(false);
+  const [newName,    setNewName]    = useState('');
+  const [newPreset,  setNewPreset]  = useState(0);
+  const [newDesc,    setNewDesc]    = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  useEffect(() => {
+    api.getTagDefinitions()
+      .then(setTags)
+      .catch(() => toast('Failed to load tags', 'error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function createTag() {
+    const name = newName.trim().toLowerCase();
+    if (!name) return toast('Tag name is required', 'error');
+    setSaving(true);
+    try {
+      const preset = TAG_PRESETS[newPreset];
+      const updated = await api.createTagDefinition({
+        name,
+        color:       preset.color,
+        bg:          preset.bg,
+        description: newDesc.trim(),
+      });
+      setTags(updated);
+      setShowNew(false);
+      setNewName('');
+      setNewPreset(0);
+      setNewDesc('');
+      toast('Tag created', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteTag(name) {
+    try {
+      const updated = await api.deleteTagDefinition(name);
+      setTags(updated);
+      setConfirmDel(null);
+      toast('Tag deleted', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  if (loading) return <div style={{ color: '#9CA3AF', fontSize: 13, padding: 20 }}>Loading…</div>;
+
+  const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 13, border: '1px solid #D1D5DB', borderRadius: 7, outline: 'none', fontFamily: 'inherit' };
+
+  return (
+    <div>
+      {/* Delete confirm modal */}
+      {confirmDel && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 8 }}>Delete tag "{confirmDel}"?</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 24 }}>
+              This removes the tag definition. Existing tickets that already have this tag will keep it, but it will no longer appear as an option when adding tags.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDel(null)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => deleteTag(confirmDel)} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#DC2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Ticket Tags ({tags.length})</h3>
+          <p style={{ fontSize: 12, color: '#6B7280', margin: '4px 0 0' }}>Define the tags that agents can apply to tickets. Tags appear as colored badges on ticket detail pages.</p>
+        </div>
+        {isAdmin && (
+          <button onClick={() => setShowNew(true)} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', flexShrink: 0, marginLeft: 16 }}>
+            + New Tag
+          </button>
+        )}
+      </div>
+
+      {/* New tag form */}
+      {showNew && (
+        <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Name *</label>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value.toLowerCase())}
+                onKeyDown={(e) => e.key === 'Enter' && createTag()}
+                style={inputStyle}
+                placeholder="e.g. regression, blocker, needs-repro"
+                maxLength={30}
+              />
+            </div>
+            <div style={{ flexShrink: 0 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Color</label>
+              <div style={{ display: 'flex', gap: 6, paddingTop: 4 }}>
+                {TAG_PRESETS.map((p, i) => (
+                  <button
+                    key={p.label}
+                    title={p.label}
+                    onClick={() => setNewPreset(i)}
+                    style={{
+                      width: 22, height: 22, borderRadius: '50%', border: newPreset === i ? '3px solid #111827' : '2px solid transparent',
+                      background: p.color, cursor: 'pointer', padding: 0, outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Description (optional)</label>
+            <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} style={inputStyle} placeholder="When should this tag be used?" />
+          </div>
+          {/* Preview */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Preview</label>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center',
+              background: TAG_PRESETS[newPreset].bg,
+              color:      TAG_PRESETS[newPreset].color,
+              border:     `1px solid ${TAG_PRESETS[newPreset].border}`,
+              borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 500,
+            }}>
+              {newName || 'tag-name'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={() => { setShowNew(false); setNewName(''); setNewPreset(0); setNewDesc(''); }} style={{ padding: '7px 14px', fontSize: 13, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 7, cursor: 'pointer' }}>Cancel</button>
+            <button onClick={createTag} disabled={saving} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: '#1E293B', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+              {saving ? 'Saving…' : 'Create Tag'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tag list */}
+      {tags.length === 0 ? (
+        <div style={{ color: '#9CA3AF', fontSize: 13, padding: '32px 0', textAlign: 'center' }}>
+          No tags defined yet. Create your first tag to get started.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tags.map((t) => (
+            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 14px' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                background: t.bg, color: t.color,
+                border: `1px solid ${t.bg === '#EFF6FF' ? '#BFDBFE' : t.bg}`,
+                borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 500, minWidth: 80, justifyContent: 'center',
+              }}>
+                {t.name}
+              </span>
+              <div style={{ flex: 1 }}>
+                {t.description && <div style={{ fontSize: 12, color: '#6B7280' }}>{t.description}</div>}
+                {!t.description && <div style={{ fontSize: 12, color: '#D1D5DB', fontStyle: 'italic' }}>No description</div>}
+              </div>
+              {isAdmin && (
+                <button
+                  onClick={() => setConfirmDel(t.name)}
+                  style={{ padding: '4px 10px', fontSize: 12, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1196,13 +1547,14 @@ export default function SettingsPage() {
     { key: 'csat',             label: 'CSAT' },
     { key: 'custom-fields',    label: 'Custom Fields' },
     { key: 'ticket-templates', label: 'Ticket Templates' },
+    { key: 'tags',             label: 'Tags' },
     { key: 'system-status',    label: 'System Status' },
   ];
 
   const TAB_STYLE = (tab) => ({
     padding: '8px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    border: 'none', borderBottom: activeTab === tab ? '2px solid #2563EB' : '2px solid transparent',
-    background: 'none', color: activeTab === tab ? '#2563EB' : '#6B7280',
+    border: 'none', borderBottom: activeTab === tab ? '2px solid #1E293B' : '2px solid transparent',
+    background: 'none', color: activeTab === tab ? '#1E293B' : '#6B7280',
     marginBottom: -1, transition: 'color 0.15s',
   });
 
@@ -1222,6 +1574,7 @@ export default function SettingsPage() {
        activeTab === 'csat'             ? <CSATTab /> :
        activeTab === 'custom-fields'    ? <CustomFieldsTab /> :
        activeTab === 'ticket-templates' ? <TicketTemplatesTab /> :
+       activeTab === 'tags'             ? <TagsTab /> :
        activeTab === 'system-status'    ? <SystemStatusTab /> :
       (
         <form onSubmit={handleSave} style={{ maxWidth: 680 }}>
@@ -1257,7 +1610,7 @@ export default function SettingsPage() {
 
           {isAdmin ? (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button type="submit" disabled={saving} style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#93C5FD' : '#2563EB', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
+              <button type="submit" disabled={saving} style={{ padding: '9px 24px', fontSize: 14, fontWeight: 600, background: saving ? '#64748B' : '#1E293B', color: '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
                 {saving ? 'Saving…' : 'Save Settings'}
               </button>
             </div>

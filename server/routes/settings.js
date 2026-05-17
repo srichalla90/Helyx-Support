@@ -12,6 +12,7 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db');
 const adminOnly    = require('../middleware/adminOnly');
+const staffOnly    = require('../middleware/staffOnly');
 const handleError   = require('../middleware/handleError');
 
 // Keys that are allowed to be read/written via the API
@@ -21,10 +22,11 @@ const ALLOWED_KEYS = new Set([
   'portal_url',
   'announce_notify_customers',
   'announce_notify_agents',
+  'products',
 ]);
 
 // ── GET /api/settings ─────────────────────────────────────────────────────────
-router.get('/', (_req, res) => {
+router.get('/', staffOnly, (_req, res) => {
   try {
     const rows = db.prepare('SELECT key, value FROM settings').all();
     const map  = {};

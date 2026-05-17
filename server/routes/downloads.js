@@ -19,7 +19,20 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}_${safe}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } }); // 200 MB
+const downloadsFileFilter = (req, file, cb) => {
+  const allowed = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'text/plain', 'text/csv',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/zip', 'application/x-zip-compressed',
+  ];
+  cb(null, allowed.includes(file.mimetype));
+};
+const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 }, fileFilter: downloadsFileFilter }); // 200 MB
 
 const now = () => new Date().toISOString();
 
@@ -118,11 +131,15 @@ router.delete('/:id', requireAuth, adminOnly, (req, res) => {
 });
 
 // ── GET /api/downloads/file/:filename — serve uploaded file ───────────────────
-router.get('/file/:filename', (req, res) => {
+router.get('/file/:filename', requireAuth, (req, res) => {
   try {
-    const filePath = path.join(UPLOAD_DIR, req.params.filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
-    res.download(filePath);
+    // Prevent path traversal: resolve and verify the file stays within UPLOAD_DIR
+    const resolved = path.resolve(UPLOAD_DIR, req.params.filename);
+    if (!resolved.startsWith(path.resolve(UPLOAD_DIR) + path.sep)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File not found' });
+    res.download(resolved);
   } catch (e) { return handleError(res, e); }
 });
 

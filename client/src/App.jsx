@@ -15,14 +15,20 @@ import KnowledgeBasePage  from './pages/KnowledgeBasePage';
 import AnnouncementsPage     from './pages/AnnouncementsPage';
 import FeatureRequestsPage  from './pages/FeatureRequestsPage';
 import SettingsPage         from './pages/SettingsPage';
+import ProductsPage         from './pages/ProductsPage';
+import DeploymentsPage      from './pages/DeploymentsPage';
+import OperationsCenterPage from './pages/OperationsCenterPage';
+import ContactsPage         from './pages/ContactsPage';
 import LoginPage      from './pages/LoginPage';
 import CustomerPortal from './pages/CustomerPortal';
 import { UserContext } from './context/UserContext';
+import { ProductsProvider } from './context/ProductsContext';
 import { ToastProvider } from './components/Toast';
 import { api } from './api';
 import './styles/index.css';
 
 const PAGE_TITLES = {
+  home:          'Helyx Operations Center',
   tickets:       'Tickets',
   open:          'Open Tickets',
   pending:       'Pending Tickets',
@@ -31,9 +37,12 @@ const PAGE_TITLES = {
   knowledgebase: 'Knowledge Base',
   announcements: 'Announcements',
   features:      'Ideas Board',
+  contacts:      'Contacts',
   groups:        'Groups',
   users:         'Users',
   customers:     'Customers',
+  products:      'Products',
+  deployments:   'Deployments',
   settings:      'Settings',
 };
 
@@ -93,7 +102,7 @@ export default function App() {
 
   const [exchanging,  setExchanging]  = useState(false);
   const [authError,   setAuthError]   = useState('');
-  const [page,        setPage]        = useState(() => sessionStorage.getItem('helyx_page') || 'tickets');
+  const [page,        setPage]        = useState(() => sessionStorage.getItem('helyx_page') || 'home');
   const [ticketId,    setTicketId]    = useState(() => {
     const id = sessionStorage.getItem('helyx_ticket_id');
     return id ? Number(id) : null;
@@ -114,6 +123,11 @@ export default function App() {
       const { token, user: userData } = await api.azureLogin(result.idToken);
       localStorage.setItem('helyx_token', token);
       localStorage.setItem('helyx_user', JSON.stringify(userData));
+      // Always land on the Operations Center after a fresh login
+      sessionStorage.setItem('helyx_page', 'home');
+      sessionStorage.removeItem('helyx_ticket_id');
+      setPage('home');
+      setTicketId(null);
       setUser(userData);
     } catch (e) {
       console.error('Token exchange failed:', e);
@@ -144,6 +158,11 @@ export default function App() {
   function handleDevLogin(token, userData) {
     localStorage.setItem('helyx_token', token);
     localStorage.setItem('helyx_user', JSON.stringify(userData));
+    // Always land on the Operations Center after a fresh login
+    sessionStorage.setItem('helyx_page', 'home');
+    sessionStorage.removeItem('helyx_ticket_id');
+    setPage('home');
+    setTicketId(null);
     setUser(userData);
   }
 
@@ -209,9 +228,11 @@ export default function App() {
   if (user.role === 'customer' || portalMode) {
     return (
       <UserContext.Provider value={user}>
-        <ToastProvider>
-          <CustomerPortal onLogout={handleLogout} />
-        </ToastProvider>
+        <ProductsProvider>
+          <ToastProvider>
+            <CustomerPortal onLogout={handleLogout} />
+          </ToastProvider>
+        </ProductsProvider>
       </UserContext.Provider>
     );
   }
@@ -221,26 +242,37 @@ export default function App() {
 
   return (
     <UserContext.Provider value={user}>
+      <ProductsProvider>
       <ToastProvider>
         <div className="app">
           <Sidebar current={page} onNav={navigate} onLogout={handleLogout} />
 
           <div className="main">
-            <header className="topbar">
-              <h1>{ticketId ? `Ticket #${ticketId}` : PAGE_TITLES[page]}</h1>
-            </header>
+            {page !== 'home' && (
+              <header className="topbar">
+                <h1>{ticketId ? `Ticket #${ticketId}` : PAGE_TITLES[page]}</h1>
+              </header>
+            )}
 
             <div className="content">
               {ticketId ? (
                 <TicketDetail ticketId={ticketId} onBack={backToList} onSelectTicket={openTicket} />
+              ) : page === 'home' ? (
+                <OperationsCenterPage onNav={navigate} />
               ) : isTicketView ? (
                 <TicketList onSelect={openTicket} filterStatus={page} />
+              ) : page === 'contacts' ? (
+                <ContactsPage />
               ) : page === 'groups' ? (
                 <GroupsPage />
               ) : page === 'users' ? (
                 <UsersPage />
               ) : page === 'customers' ? (
                 <CustomersPage />
+              ) : page === 'products' ? (
+                <ProductsPage />
+              ) : page === 'deployments' ? (
+                <DeploymentsPage />
               ) : page === 'reports' ? (
                 <ReportsPage />
               ) : page === 'knowledgebase' ? (
@@ -256,6 +288,7 @@ export default function App() {
           </div>
         </div>
       </ToastProvider>
+      </ProductsProvider>
     </UserContext.Provider>
   );
 }

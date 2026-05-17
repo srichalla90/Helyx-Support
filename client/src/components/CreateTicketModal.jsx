@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { api, TICKET_TYPES, PRODUCTS, STATUSES, PRIORITIES } from '../api';
+import { api, TICKET_TYPES, STATUSES, PRIORITIES } from '../api';
+import { useProducts } from '../context/ProductsContext';
 
 export default function CreateTicketModal({ onClose, onCreated, initialData }) {
+  const { products: PRODUCTS } = useProducts();
   const [form, setForm] = useState({
     title:           initialData?.title || '',
     description:     initialData?.description || '',
@@ -82,7 +84,7 @@ export default function CreateTicketModal({ onClose, onCreated, initialData }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
           <h2>New Ticket</h2>

@@ -60,7 +60,7 @@ function VotersModal({ featureId, title, onClose }) {
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-    }} onClick={onClose}>
+    }}>
       <div style={{
         background: '#fff', borderRadius: 12, padding: 24, width: 420,
         maxHeight: '70vh', display: 'flex', flexDirection: 'column',
@@ -172,7 +172,7 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       {/* Back */}
       <button onClick={onBack} style={{
-        background: 'none', border: 'none', color: '#2563EB', fontSize: 13,
+        background: 'none', border: 'none', color: '#6B7280', fontSize: 13,
         cursor: 'pointer', padding: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 4,
       }}>← Back to Ideas Board</button>
 
@@ -276,7 +276,7 @@ function FeatureDetail({ feature, onBack, onUpdate, onDelete }) {
               disabled={posting || !commentBody.trim()}
               style={{
                 padding: '8px 18px', borderRadius: 8, border: 'none',
-                background: posting || !commentBody.trim() ? '#E5E7EB' : '#2563EB',
+                background: posting || !commentBody.trim() ? '#E5E7EB' : '#1E293B',
                 color: posting || !commentBody.trim() ? '#9CA3AF' : '#fff',
                 fontSize: 13, fontWeight: 600, cursor: posting || !commentBody.trim() ? 'not-allowed' : 'pointer',
               }}
@@ -485,7 +485,7 @@ export default function FeatureRequestsPage() {
 
       {/* List */}
       {loading ? (
-        <div style={{ color: '#9CA3AF', textAlign: 'center', padding: 60 }}>Loading…</div>
+        <div style={{ color: '#9CA3AF', textAlign: 'center', padding: 60 }}><div className="spinner" />Loading…</div>
       ) : filtered.length === 0 ? (
         <div style={{
           color: '#9CA3AF', textAlign: 'center', padding: 60,

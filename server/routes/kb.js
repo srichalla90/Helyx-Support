@@ -25,14 +25,7 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 const handleError   = require('../middleware/handleError');
-
-// Only agents and admins may write to the KB — customers are read-only
-const staffOnly = (req, res, next) => {
-  if (!['agent', 'admin'].includes(req.user?.role)) {
-    return res.status(403).json({ error: 'Agent or admin access required' });
-  }
-  next();
-};
+const staffOnly     = require('../middleware/staffOnly');
 
 // Validate numeric :id params before any handler runs
 router.param('id', (req, res, next, val) => {
@@ -54,7 +47,17 @@ const storage = multer.diskStorage({
     cb(null, name);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50 MB cap
+const kbFileFilter = (req, file, cb) => {
+  const allowed = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'text/plain',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ];
+  cb(null, allowed.includes(file.mimetype));
+};
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 }, fileFilter: kbFileFilter }); // 50 MB cap
 
 const articleStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, ARTICLE_UPLOAD_DIR),
@@ -64,7 +67,7 @@ const articleStorage = multer.diskStorage({
     cb(null, name);
   },
 });
-const uploadArticle = multer({ storage: articleStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+const uploadArticle = multer({ storage: articleStorage, limits: { fileSize: 50 * 1024 * 1024 }, fileFilter: kbFileFilter });
 
 function now() { return new Date().toISOString(); }
 
@@ -166,9 +169,12 @@ router.get('/files/:id/download', (req, res) => {
   try {
     const file = db.prepare('SELECT * FROM kb_files WHERE id = ?').get(id);
     if (!file) return res.status(404).json({ error: 'File not found' });
-    const filePath = path.join(UPLOAD_DIR, file.filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on disk' });
-    res.download(filePath, file.original_name || file.display_name);
+    const resolved = path.resolve(UPLOAD_DIR, file.filename);
+    if (!resolved.startsWith(path.resolve(UPLOAD_DIR) + path.sep)) {
+      return res.status(400).json({ error: 'Invalid file' });
+    }
+    if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File missing on disk' });
+    res.download(resolved, file.original_name || file.display_name);
   } catch (e) { return handleError(res, e); }
 });
 
@@ -234,6 +240,10 @@ router.get('/articles/:id', (req, res) => {
   try {
     const article = db.prepare('SELECT * FROM kb_articles WHERE id = ?').get(id);
     if (!article) return res.status(404).json({ error: 'Article not found' });
+    // Customers cannot see draft articles
+    if (article.status === 'draft' && req.user.role === 'customer') {
+      return res.status(404).json({ error: 'Article not found' });
+    }
     const files = db.prepare('SELECT * FROM kb_article_files WHERE article_id = ? ORDER BY created_at ASC').all(id);
     res.json({ ...article, files });
   } catch (e) { return handleError(res, e); }
@@ -309,9 +319,12 @@ router.get('/article-files/:id/download', (req, res) => {
   try {
     const file = db.prepare('SELECT * FROM kb_article_files WHERE id = ?').get(id);
     if (!file) return res.status(404).json({ error: 'File not found' });
-    const filePath = path.join(ARTICLE_UPLOAD_DIR, file.filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on disk' });
-    res.download(filePath, file.original_name || file.display_name);
+    const resolved = path.resolve(ARTICLE_UPLOAD_DIR, file.filename);
+    if (!resolved.startsWith(path.resolve(ARTICLE_UPLOAD_DIR) + path.sep)) {
+      return res.status(400).json({ error: 'Invalid file' });
+    }
+    if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File missing on disk' });
+    res.download(resolved, file.original_name || file.display_name);
   } catch (e) { return handleError(res, e); }
 });
 

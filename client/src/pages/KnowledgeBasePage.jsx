@@ -453,8 +453,8 @@ function ArticleEditor({ folderId, article, onSave, onCancel }) {
 
       {/* Video embed dialog */}
       {videoDialog && (
-        <div className="modal-overlay" onClick={() => setVideoDialog(false)}>
-          <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 460 }}>
             <div className="modal-header">
               <h2>Embed Video</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setVideoDialog(false)}>✕</button>
@@ -666,8 +666,8 @@ function CreateFolderModal({ parentName, onConfirm, onClose }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
           <h2>New Folder{parentName ? ` in "${parentName}"` : ''}</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
@@ -706,8 +706,8 @@ function RenameModal({ current, onConfirm, onClose }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
           <h2>Rename Folder</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
@@ -735,8 +735,8 @@ function RenameModal({ current, onConfirm, onClose }) {
 
 function ConfirmModal({ message, onConfirm, onClose }) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
           <h2>Confirm Delete</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>

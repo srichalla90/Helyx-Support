@@ -59,20 +59,46 @@ async function sendAnnouncementBlast(announcement) {
     const notifyCustomers = getSetting('announce_notify_customers') === '1';
     const notifyAgents    = getSetting('announce_notify_agents')    === '1';
 
+    // Parse product audience: [] means all products, otherwise filter to listed products
+    let targetProducts = [];
+    try { targetProducts = JSON.parse(announcement.products || '[]'); } catch (_) {}
+    const hasProductFilter = Array.isArray(targetProducts) && targetProducts.length > 0;
+
     const recipients = new Set();
 
     if (notifyCustomers) {
-      // All unique requester emails from existing tickets
-      const ticketEmails = db.prepare(
-        `SELECT DISTINCT requester_email FROM tickets WHERE requester_email IS NOT NULL AND requester_email != ''`
-      ).all();
-      for (const r of ticketEmails) recipients.add(r.requester_email.toLowerCase());
+      if (hasProductFilter) {
+        // Only include requesters who have tickets for one of the targeted products
+        const placeholders = targetProducts.map(() => '?').join(', ');
+        const ticketEmails = db.prepare(
+          `SELECT DISTINCT requester_email FROM tickets
+           WHERE product IN (${placeholders})
+             AND requester_email IS NOT NULL AND requester_email != ''`
+        ).all(...targetProducts);
+        for (const r of ticketEmails) recipients.add(r.requester_email.toLowerCase());
 
-      // Users with the customer role
-      const customers = db.prepare(
-        `SELECT email FROM users WHERE role = 'customer' AND active = 1 AND email IS NOT NULL AND email != ''`
-      ).all();
-      for (const c of customers) recipients.add(c.email.toLowerCase());
+        // Customer-role users whose email domain / tickets match — same product filter via tickets
+        const customers = db.prepare(
+          `SELECT DISTINCT u.email FROM users u
+           INNER JOIN tickets t ON LOWER(t.requester_email) = LOWER(u.email)
+           WHERE u.role = 'customer' AND u.active = 1
+             AND u.email IS NOT NULL AND u.email != ''
+             AND t.product IN (${placeholders})`
+        ).all(...targetProducts);
+        for (const c of customers) recipients.add(c.email.toLowerCase());
+      } else {
+        // No product filter — original behaviour: all requester emails
+        const ticketEmails = db.prepare(
+          `SELECT DISTINCT requester_email FROM tickets WHERE requester_email IS NOT NULL AND requester_email != ''`
+        ).all();
+        for (const r of ticketEmails) recipients.add(r.requester_email.toLowerCase());
+
+        // Users with the customer role
+        const customers = db.prepare(
+          `SELECT email FROM users WHERE role = 'customer' AND active = 1 AND email IS NOT NULL AND email != ''`
+        ).all();
+        for (const c of customers) recipients.add(c.email.toLowerCase());
+      }
     }
 
     if (notifyAgents) {
@@ -120,9 +146,15 @@ async function sendAnnouncementBlast(announcement) {
 }
 
 // ── GET /api/announcements ────────────────────────────────────────────────────
-router.get('/', (_req, res) => {
+router.get('/', (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM announcements ORDER BY pinned DESC, updated_at DESC').all();
+    let sql = `SELECT * FROM announcements`;
+    // Customers only see published announcements
+    if (!req.user || req.user.role === 'customer') {
+      sql += ` WHERE status = 'published'`;
+    }
+    sql += ` ORDER BY pinned DESC, updated_at DESC`;
+    const rows = db.prepare(sql).all();
     res.json(rows);
   } catch (e) { return handleError(res, e); }
 });
@@ -139,17 +171,18 @@ router.get('/public', (_req, res) => {
 
 // ── POST /api/announcements ───────────────────────────────────────────────────
 router.post('/', adminOnly, (req, res) => {
-  let { title, body = '', type = 'general', status = 'draft', pinned = false, send_email = false } = req.body;
+  let { title, body = '', type = 'general', status = 'draft', pinned = false, send_email = false, products = [] } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   if (!VALID_TYPES.includes(type)) type = 'general';
-  const safeStatus = status === 'published' ? 'published' : 'draft';
+  const safeStatus   = status === 'published' ? 'published' : 'draft';
+  const productsJson = JSON.stringify(Array.isArray(products) ? products : []);
   const ts = now();
   const publishedAt = safeStatus === 'published' ? ts : null;
   try {
     const result = db.prepare(`
-      INSERT INTO announcements (title, body, type, status, pinned, published_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title.trim(), body, type, safeStatus, pinned ? 1 : 0, publishedAt, ts, ts);
+      INSERT INTO announcements (title, body, type, status, pinned, published_at, products, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(title.trim(), body, type, safeStatus, pinned ? 1 : 0, publishedAt, productsJson, ts, ts);
     const row = db.prepare('SELECT * FROM announcements WHERE id = ?').get(result.lastInsertRowid);
 
     // Only blast if caller explicitly opted in
@@ -162,17 +195,17 @@ router.post('/', adminOnly, (req, res) => {
 // ── PUT /api/announcements/:id ────────────────────────────────────────────────
 router.put('/:id', adminOnly, (req, res) => {
   const id = Number(req.params.id);
-  let { title, body = '', type = 'general', status = 'draft', pinned = false, send_email = false } = req.body;
+  let { title, body = '', type = 'general', status = 'draft', pinned = false, send_email = false, products = [] } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   if (!VALID_TYPES.includes(type)) type = 'general';
-  const safeStatus = status === 'published' ? 'published' : 'draft';
+  const safeStatus   = status === 'published' ? 'published' : 'draft';
+  const productsJson = JSON.stringify(Array.isArray(products) ? products : []);
   const ts = now();
 
   try {
     const existing = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Not found' });
 
-    const wasPublished = existing.status === 'published';
     const nowPublished = safeStatus === 'published';
 
     // Only set published_at the first time it transitions to published
@@ -180,9 +213,9 @@ router.put('/:id', adminOnly, (req, res) => {
 
     db.prepare(`
       UPDATE announcements
-      SET title = ?, body = ?, type = ?, status = ?, pinned = ?, published_at = ?, updated_at = ?
+      SET title = ?, body = ?, type = ?, status = ?, pinned = ?, published_at = ?, products = ?, updated_at = ?
       WHERE id = ?
-    `).run(title.trim(), body, type, safeStatus, pinned ? 1 : 0, publishedAt, ts, id);
+    `).run(title.trim(), body, type, safeStatus, pinned ? 1 : 0, publishedAt, productsJson, ts, id);
 
     const row = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
 

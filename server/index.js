@@ -3,6 +3,7 @@ try { require('dotenv').config(); } catch (_) {}
 
 const express  = require('express');
 const cors     = require('cors');
+const helmet   = require('helmet');
 const path     = require('path');
 const db       = require('./db');
 
@@ -27,13 +28,64 @@ const statusRouter          = require('./routes/status');
 const ticketTemplatesRouter = require('./routes/ticketTemplates');
 const forumRouter           = require('./routes/forum');
 const downloadsRouter       = require('./routes/downloads');
+const deploymentsRouter     = require('./routes/deployments');
+const reportsRouter         = require('./routes/reports');
+const devopsRouter          = require('./routes/devops');
+const tagDefinitionsRouter  = require('./routes/tag-definitions');
+const contactsRouter        = require('./routes/contacts');
+const rateLimit           = require('express-rate-limit');
 const subscriptionManager = require('./services/subscriptionManager');
 const requireAuth         = require('./middleware/requireAuth');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(helmet());
+
+// ── Rate limiting (M1) ────────────────────────────────────────────────────────
+// Tight limit on auth endpoints to prevent brute-force
+app.use('/api/auth', rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+}));
+// General API limit
+app.use('/api', rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+}));
+// Tighter limit for email ingest endpoints
+const ingestLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  message: { error: 'Too many ingest requests' }
+});
+app.use('/api/email/ingest', ingestLimiter);
+app.use('/api/inbound', ingestLimiter);
+
+// ── Security startup checks ───────────────────────────────────────────────────
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start in production.');
+  process.exit(1);
+}
+const WEAK_SECRETS = ['secret', 'dev-secret-NOT-for-production', 'changeme', 'password', 'jwt-secret'];
+if (!process.env.JWT_SECRET || WEAK_SECRETS.includes(process.env.JWT_SECRET)) {
+  console.warn('[SECURITY WARNING] JWT_SECRET is not set or is a known weak value. Set a strong secret in production!');
+}
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// In production restrict to the configured portal origin; dev allows all.
+const corsOrigin = process.env.CORS_ORIGIN;
+if (!corsOrigin) {
+  console.warn('[WARN] CORS_ORIGIN not set — accepting all origins (dev only)');
+}
+app.use(cors(corsOrigin ? { origin: corsOrigin, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE'], allowedHeaders: ['Content-Type','Authorization'] } : undefined));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -49,6 +101,12 @@ app.use('/api/users',         requireAuth, usersRouter);
 app.use('/api/customers',     requireAuth, customersRouter);
 app.use('/api/email',         emailRouter);             // ingest uses X-Ingest-Secret; no global JWT
 app.use('/api/kb',            requireAuth, kbRouter);
+// Public announcements sub-route must be registered BEFORE the requireAuth wrapper
+app.use('/api/announcements/public', (req, res, next) => {
+  // Only GET is public — all mutations still require auth via the main mount below
+  if (req.method === 'GET') return next();
+  requireAuth(req, res, next);
+}, announcementsRouter);
 app.use('/api/announcements', requireAuth, announcementsRouter);
 app.use('/api/features',      requireAuth, featuresRouter);
 app.use('/api/settings',        requireAuth, settingsRouter);
@@ -62,6 +120,11 @@ app.use('/api/status',           statusRouter);          // GET public, PUT requ
 app.use('/api/ticket-templates', requireAuth, ticketTemplatesRouter);
 app.use('/api/forum',            requireAuth, forumRouter);
 app.use('/api/downloads',        downloadsRouter);   // GET / public · GET /all + POST/PUT/DELETE → admin only (enforced in route)
+app.use('/api/deployments',      requireAuth, deploymentsRouter);
+app.use('/api/reports',          requireAuth, reportsRouter);
+app.use('/api/devops',           requireAuth, devopsRouter);
+app.use('/api/tag-definitions',  requireAuth, tagDefinitionsRouter);
+app.use('/api/contacts',         requireAuth, contactsRouter);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 

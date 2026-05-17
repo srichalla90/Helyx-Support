@@ -1,6 +1,6 @@
 # Helyx Support — Internal Ticketing System
 
-A lightweight Freshdesk-style support ticket system built for Helix Tech.
+A lightweight Freshdesk-style support ticket system built for Helyx Tech.
 
 ---
 

@@ -285,9 +285,8 @@ export default function GroupsPage() {
                           {isAdmin && (
                             <>
                               <button
-                                className="btn btn-ghost btn-sm"
-                                style={{ color: g.active === 0 ? '#1E293B' : '#D97706' }}
                                 onClick={() => promptStatus(g)}
+                                style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: g.active === 0 ? '1px solid #E5E7EB' : '1px solid #BBF7D0', background: g.active === 0 ? '#F3F4F6' : '#F0FDF4', color: g.active === 0 ? '#6B7280' : '#166534' }}
                               >
                                 {g.active === 0 ? 'Activate' : 'Deactivate'}
                               </button>

@@ -66,6 +66,7 @@ export const api = {
   createCustomer:     (body) => request('/customers', { method: 'POST', body }),
   updateCustomer:     (id, body) => request(`/customers/${id}`, { method: 'PUT', body }),
   setCustomerActive:  (id, active) => request(`/customers/${id}/status`, { method: 'PATCH', body: { active } }),
+  bulkImportCustomers:(rows) => request('/customers/bulk-import', { method: 'POST', body: { rows } }),
   deleteCustomer:     (id) => request(`/customers/${id}`, { method: 'DELETE' }),
 
   // Stats
@@ -193,6 +194,23 @@ export const api = {
   updateTicketTemplate:  (id, body) => request(`/ticket-templates/${id}`, { method: 'PUT', body }),
   deleteTicketTemplate:  (id) => request(`/ticket-templates/${id}`, { method: 'DELETE' }),
 
+  // Deployments
+  getDeployments:     (params = {}) => request('/deployments' + (Object.keys(params).length ? '?' + new URLSearchParams(params) : '')),
+  createDeployment:   (body) => request('/deployments', { method: 'POST', body }),
+  updateDeployment:   (id, body) => request(`/deployments/${id}`, { method: 'PUT', body }),
+  deleteDeployment:   (id) => request(`/deployments/${id}`, { method: 'DELETE' }),
+  uploadDeploymentAttachments: (id, formData) =>
+    fetch(`/api/deployments/${id}/attachments`, { method: 'POST', body: formData, headers: getAuthHeader() })
+      .then(async (res) => { const d = await res.json(); if (!res.ok) throw new Error(d.error || 'Upload failed'); return d; }),
+  deleteDeploymentAttachment:  (id) => request(`/deployments/attachments/${id}`, { method: 'DELETE' }),
+  deploymentAttachmentDownloadUrl: (id) => `/api/deployments/attachments/${id}/download`,
+
+  // Saved Reports
+  getSavedReports: () => request('/reports'),
+  saveReport:      (body) => request('/reports', { method: 'POST', body }),
+  updateReport:    (id, body) => request(`/reports/${id}`, { method: 'PUT', body }),
+  deleteReport:    (id) => request(`/reports/${id}`, { method: 'DELETE' }),
+
   // KB Articles search
   searchKbArticles: (q) => request(`/kb/articles/search?q=${encodeURIComponent(q)}`),
 
@@ -214,6 +232,24 @@ export const api = {
   updateDownload:  (id, body) => request(`/downloads/${id}`, { method: 'PUT', body }),
   deleteDownload:  (id) => request(`/downloads/${id}`, { method: 'DELETE' }),
   downloadFileUrl: (filename) => `/api/downloads/file/${filename}`,
+
+  // Azure DevOps Integration
+  getDevOpsConfig:        ()                                  => request('/devops/config'),
+  getDevOpsSuggestion:    (ticketId)                         => request(`/devops/suggest/${ticketId}`),
+  createDevOpsWorkItem:   (ticketId, adoProject, workItemType) =>
+    request('/devops/create-work-item', { method: 'POST', body: { ticketId, adoProject, workItemType } }),
+  getDevOpsWorkItemState:    (workItemId)          => request(`/devops/work-item-state/${workItemId}`),
+  getDevOpsReleases:         (params = {})         => request('/devops/releases?' + new URLSearchParams(params)),
+  getDevOpsReleaseDefinitions: ()                  => request('/devops/release-definitions'),
+
+  // Contacts directory
+  getContacts: () => request('/contacts'),
+
+  // Tag definitions
+  getTagDefinitions:    ()              => request('/tag-definitions'),
+  createTagDefinition:  (body)          => request('/tag-definitions', { method: 'POST', body }),
+  updateTagDefinition:  (name, body)    => request(`/tag-definitions/${encodeURIComponent(name)}`, { method: 'PATCH', body }),
+  deleteTagDefinition:  (name)          => request(`/tag-definitions/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -226,7 +262,8 @@ export const TICKET_TYPES = [
   'Alert',
 ];
 
-export const PRODUCTS = ['Helyx Platform', 'Helyx Data'];
+// Products are now managed dynamically via ProductsContext (api.getSettings / api.updateSettings)
+// The static PRODUCTS constant has been removed — use useProducts() from context/ProductsContext instead.
 
 export const STATUSES = [
   'Open',
